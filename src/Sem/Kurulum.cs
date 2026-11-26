@@ -47,7 +47,7 @@ namespace Sem
         static void DigerSemleriKapat()
         {
             int ben = Process.GetCurrentProcess().Id;
-            foreach (var p in Process.GetProcessesByName("Sem").Concat(Process.GetProcessesByName("SemAjan")))
+            foreach (var p in Process.GetProcessesByName("Sem"))
                 if (p.Id != ben) { try { p.Kill(); p.WaitForExit(5000); } catch { } }
         }
 
@@ -117,13 +117,14 @@ namespace Sem
             Komut("netsh.exe", "advfirewall firewall delete rule name=\"Sem Ajan\"");
             Komut("netsh.exe", "advfirewall firewall add rule name=\"Sem Ajan\" dir=in action=allow program=\"" + exe + "\" enable=yes profile=any");
 
-            // v1.0'dan kalan eski adlı kısayolları temizle.
-            foreach (var eski in new[] { Environment.SpecialFolder.CommonPrograms, Environment.SpecialFolder.CommonDesktopDirectory })
-                try { File.Delete(Path.Combine(Environment.GetFolderPath(eski), "Sem Yönetim.lnk")); } catch { }
             KisayolOlustur(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Sem Ajan.lnk"), exe, "/yonetim");
-            var masaustu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "Sem Ajan.lnk");
-            if (yoneticiBilgisayari) KisayolOlustur(masaustu, exe, "/yonetim");
-            else if (File.Exists(masaustu)) File.Delete(masaustu);
+            // Yönetici bilgisayarında masaüstü kısayolu ve Windows açılınca saatin yanında hızlı panel.
+            foreach (var (yer, arg) in new[] { (Environment.SpecialFolder.CommonDesktopDirectory, "/yonetim"), (Environment.SpecialFolder.CommonStartup, "/yonetim /tepsi") })
+            {
+                var lnk = Path.Combine(Environment.GetFolderPath(yer), "Sem Ajan.lnk");
+                if (yoneticiBilgisayari) KisayolOlustur(lnk, exe, arg);
+                else try { File.Delete(lnk); } catch { }
+            }
 
             HizmetiBaslat();
         }
@@ -134,9 +135,8 @@ namespace Sem
             Komut("sc.exe", "delete " + AjanServis.HizmetAdi);
             DigerSemleriKapat();
             Komut("netsh.exe", "advfirewall firewall delete rule name=\"Sem Ajan\"");
-            foreach (var k in new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Sem Ajan.lnk"),
-                                      Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "Sem Ajan.lnk") })
-                try { File.Delete(k); } catch { }
+            foreach (var yer in new[] { Environment.SpecialFolder.CommonPrograms, Environment.SpecialFolder.CommonDesktopDirectory, Environment.SpecialFolder.CommonStartup })
+                try { File.Delete(Path.Combine(Environment.GetFolderPath(yer), "Sem Ajan.lnk")); } catch { }
             try { Directory.Delete(AjanAyar.Klasor, true); } catch { }
             // Çalışan exe kendini silemez; kısa bir bekleyişten sonra cmd silsin.
             Process.Start(new ProcessStartInfo("cmd.exe", "/c ping 127.0.0.1 -n 3 >nul & rmdir /s /q \"" + AjanAyar.KurulumKlasoru + "\"") { CreateNoWindow = true, UseShellExecute = false });
@@ -155,7 +155,7 @@ namespace Sem
             catch { }
         }
 
-        /// <summary>Yöneticiden gelen yeni sürüm: hizmet tarafından ProgramData\Sem\guncelle\Sem.exe /guncelle olarak başlatılır.</summary>
+        /// <summary>Yeni sürüm: hizmet tarafından ProgramData\Sem\guncelle\Sem.exe /guncelle olarak başlatılır.</summary>
         public static int KendiniGuncelle()
         {
             try
@@ -212,7 +212,7 @@ namespace Sem
             Icerik.Controls.Add(sifre2);
             if (!anahtarVar) y += Tema.S(60);
 
-            yonetici = new Anahtar("Yönetici bilgisayarı", "Otomatik kapanmaz ve masaüstüne \"Sem Ajan\" kısayolu konur.") { Location = new Point(0, y), Width = g, Acik = kurulu && !ayar.OtomatikKapanma };
+            yonetici = new Anahtar("Yönetici bilgisayarı", "Otomatik kapanmaz, masaüstüne \"Sem Ajan\" kısayolu konur, saatin yanında hızlı panel açılır.") { Location = new Point(0, y), Width = g, Acik = kurulu && !ayar.OtomatikKapanma };
             Icerik.Controls.Add(yonetici);
 
             kur = new Buton(kurulu ? "Güncelle" : "Kur", kurulu ? Ik.Esitle : Ik.Indir, ButonTuru.Birincil) { Width = g, Height = Tema.S(48), Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom };

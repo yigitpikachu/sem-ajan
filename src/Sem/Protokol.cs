@@ -1,9 +1,12 @@
-// Sem Yönetici / Sem Ajan ortak iletişim katmanı.
+// Sem Ajan ortak iletişim katmanı.
 // Her bağlantıda ajan rastgele bir "nonce" gönderir; tüm çerçeveler AES-256 ile şifrelenir
 // ve HMAC-SHA256 ile imzalanır (nonce imzaya dahil olduğu için kayıt edilip tekrar gönderilemez).
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -187,6 +190,43 @@ namespace Sem.Ortak
                 CerceveYaz(s, Sifreleme.Kilitle(anahtar, nonce, "Y", m.Paketle()));
                 return Mesaj.Coz(Sifreleme.Ac(anahtar, nonce, "A", CerceveOku(s)));
             }
+        }
+    }
+
+    /// <summary>Wake-on-LAN: kapalı bilgisayarı ağdan açma sinyali.</summary>
+    public static class Uyandirma
+    {
+        public static void Gonder(string mac)
+        {
+            var m = (mac ?? "").Split('-', ':').Where(x => x != "").Select(x => Convert.ToByte(x, 16)).ToArray();
+            if (m.Length != 6) throw new Exception("MAC adresi bilinmiyor");
+            var paket = new byte[102];
+            for (int i = 0; i < 6; i++) paket[i] = 0xFF;
+            for (int i = 1; i <= 16; i++) Buffer.BlockCopy(m, 0, paket, i * 6, 6);
+            using (var u = new UdpClient { EnableBroadcast = true })
+                foreach (var b in YayinAdresleri())
+                {
+                    try { u.Send(paket, paket.Length, new IPEndPoint(b, 9)); } catch { }
+                    try { u.Send(paket, paket.Length, new IPEndPoint(b, 7)); } catch { }
+                }
+        }
+
+        public static IEnumerable<IPAddress> YayinAdresleri()
+        {
+            var l = new List<IPAddress> { IPAddress.Broadcast };
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up || ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                foreach (var u in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (u.Address.AddressFamily != AddressFamily.InterNetwork || u.IPv4Mask == null) continue;
+                    var ip = u.Address.GetAddressBytes(); var mk = u.IPv4Mask.GetAddressBytes();
+                    var b = new byte[4];
+                    for (int i = 0; i < 4; i++) b[i] = (byte)(ip[i] | ~mk[i]);
+                    l.Add(new IPAddress(b));
+                }
+            }
+            return l.Distinct();
         }
     }
 }

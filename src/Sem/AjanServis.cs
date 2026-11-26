@@ -23,7 +23,7 @@ namespace Sem.Ajan
 {
     /// <summary>
     /// SYSTEM hesabıyla çalışan Windows hizmeti. Ağdan gelen komutları karşılar, kapanma saatini takip eder
-    /// ve ekrandaki kullanıcı tarafını (SemAjan.exe /ekran) ayakta tutar.
+    /// ve ekrandaki kullanıcı tarafını (Sem.exe /ekran) ayakta tutar.
     /// </summary>
     public class AjanServis : ServiceBase
     {
@@ -51,6 +51,14 @@ namespace Sem.Ajan
 
         string sonIslem = "";
 
+        // Ekran görüntüsü istekleri: ekran tarafı cevabı gönderene kadar bekler
+        class BekleyenResim { public readonly ManualResetEventSlim Olay = new ManualResetEventSlim(); public string Veri = "", Hata = ""; }
+        readonly Dictionary<string, BekleyenResim> bekleyenResim = new Dictionary<string, BekleyenResim>();
+
+        // Okunan duyurular: "id|yyyy-MM-ddTHH:mm:ss"
+        readonly List<string> okunan = new List<string>();
+        DateTime sonSabahSinyal = DateTime.MinValue;
+
         public AjanServis() { ServiceName = HizmetAdi; CanStop = true; CanShutdown = true; }
 
         protected override void OnStart(string[] args) { Baslat(); }
@@ -61,6 +69,7 @@ namespace Sem.Ajan
         {
             ayar = AjanAyar.Oku();
             Kurulum.EskileriTemizle();
+            try { if (File.Exists(AjanAyar.OkunanDosya)) okunan.AddRange(File.ReadAllLines(AjanAyar.OkunanDosya).Where(x => x.Contains("|"))); } catch { }
             calisiyor = true;
             new Thread(TcpDongu) { IsBackground = true }.Start();
             new Thread(KesifDongu) { IsBackground = true }.Start();
@@ -83,6 +92,53 @@ namespace Sem.Ajan
             try { KapanmaKontrol(); } catch (Exception e) { Gunluk.Yaz("Tik: " + e.Message); }
             try { EkranBekci(); } catch (Exception e) { Gunluk.Yaz("Ekran: " + e.Message); }
             try { GuncellemeKontrol(); } catch (Exception e) { Gunluk.Yaz("Güncelleme: " + e.Message); }
+            try { SabahKontrol(); } catch (Exception e) { Gunluk.Yaz("Sabah: " + e.Message); }
+        }
+
+        // ---------------------------------------------------------------- Sabah açılma
+        bool SabahPlaniVar(out TimeSpan saat)
+        {
+            saat = TimeSpan.Zero;
+            return !string.IsNullOrEmpty(ayar.SabahSaat) && ayar.SabahMacler != "" && TimeSpan.TryParse(ayar.SabahSaat, out saat);
+        }
+
+        /// <summary>Planlanan saatte listedeki bilgisayarlara üç dakika boyunca aralıklı açma sinyali gönderir.</summary>
+        void SabahKontrol()
+        {
+            TimeSpan saat;
+            if (!SabahPlaniVar(out saat)) return;
+            // Otomatik kapanmayan (yönetici) bilgisayar gece uykuya geçmesin ki sabah sinyali gönderebilsin.
+            if (!ayar.OtomatikKapanma) Yerel.SetThreadExecutionState(Yerel.ES_SYSTEM_REQUIRED);
+            var simdi = DateTime.Now;
+            if (!ayar.SabahGunler.Split(',').Contains(((int)simdi.DayOfWeek).ToString())) return;
+            var bas = simdi.Date + saat;
+            if (simdi < bas || simdi > bas.AddMinutes(3) || (simdi - sonSabahSinyal).TotalSeconds < 30) return;
+            if (sonSabahSinyal.Date != simdi.Date) Gunluk.Yaz("Sabah açılma sinyali gönderiliyor");
+            sonSabahSinyal = simdi;
+            foreach (var mac in ayar.SabahMacler.Split(';').Where(x => x.Trim() != ""))
+                try { Uyandirma.Gonder(mac.Trim()); } catch { }
+        }
+
+        /// <summary>Ağ kartının "sihirli paketle uyanma" ayarını açar ve hızlı başlatmayı kapatır (Wake-on-LAN için).</summary>
+        void WolHazirla()
+        {
+            Arkaplan("Ağdan açılma hazırlığı", () =>
+            {
+                var ps = "$ErrorActionPreference='SilentlyContinue'\r\n" +
+                         "Get-NetAdapter -Physical | ForEach-Object {\r\n" +
+                         "  Set-NetAdapterPowerManagement -Name $_.Name -WakeOnMagicPacket Enabled -NoRestart\r\n" +
+                         "  foreach ($k in '*WakeOnMagicPacket','EnablePME','S5WakeOnLan','WakeOnLink') { Set-NetAdapterAdvancedProperty -Name $_.Name -RegistryKeyword $k -RegistryValue 1 -NoRestart }\r\n" +
+                         "}\r\n" +
+                         "Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power' -Name HiberbootEnabled -Value 0\r\n";
+                var klasor = Path.Combine(AjanAyar.Klasor, "wol");
+                Directory.CreateDirectory(klasor);
+                var dosya = Path.Combine(klasor, "wol.ps1");
+                File.WriteAllText(dosya, ps, new UTF8Encoding(true));
+                Calistir("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"" + dosya + "\"", true);
+                try { Directory.Delete(klasor, true); } catch { }
+                lock (kilit) { ayar.WolHazir = true; ayar.Yaz(); }
+                return "tamamlandı (BIOS'ta Wake-on-LAN da açık olmalı)";
+            });
         }
 
         // ---------------------------------------------------------------- Online güncelleme
@@ -168,7 +224,7 @@ namespace Sem.Ajan
                 if (elleHedef != null) return (elleYenidenBaslat ? "Yeniden başlatma " : "Kapatma ") + elleHedef.Value.ToString("HH:mm");
                 if (ayar.BugunKapatmaTarihi == simdi.ToString("yyyy-MM-dd")) return "Bugün kapanmayacak";
                 var h = OtomatikHedef(simdi);
-                if (h == null) return ayar.OtomatikKapanma ? "Bugün kapanma yok" : "Otomatik kapanma kapalı";
+                if (h == null) return ayar.OtomatikKapanma ? "Bugün kapanma yok" : "Kapanmaz";
                 return h.Value.ToString("HH:mm") + (erteleSayisi > 0 ? " (" + erteleSayisi + " kez ertelendi)" : "");
             }
         }
@@ -228,6 +284,22 @@ namespace Sem.Ajan
                 case "MERHABA":
                     // Güncellemeden sonra eski sürümde kalan ekran tarafı kapansın, bekçi yenisini açar.
                     if (p.Length < 2 || p[1] != Sabitler.Surum) { sonEkranBaslatma = DateTime.MinValue; EkranaGonder("CIK"); }
+                    break;
+                case "RESIM":
+                {
+                    BekleyenResim b;
+                    lock (bekleyenResim) bekleyenResim.TryGetValue(p.Length > 1 ? p[1] : "", out b);
+                    if (b != null) { b.Veri = p.Length > 2 ? p[2] : ""; b.Hata = p.Length > 3 ? p[3] : ""; b.Olay.Set(); }
+                    break;
+                }
+                case "OKUNDU":
+                    if (p.Length < 2 || p[1] == "") break;
+                    lock (okunan)
+                    {
+                        okunan.Add(p[1] + "|" + DateTime.Now.ToString("s"));
+                        if (okunan.Count > 100) okunan.RemoveRange(0, okunan.Count - 100);
+                        try { Directory.CreateDirectory(AjanAyar.Klasor); File.WriteAllLines(AjanAyar.OkunanDosya, okunan); } catch { }
+                    }
                     break;
                 case "ERTELE":
                     lock (kilit)
@@ -337,7 +409,18 @@ namespace Sem.Ajan
                 case "DURUM": return Durum(c);
 
                 case "DUYURU":
-                    return EkranaGonder("DUYURU", m["metin"], m["baslik"]) ? Mesaj.Basari("Duyuru ekrana geldi") : Mesaj.Hata("Ekranda açık oturum yok");
+                    return EkranaGonder("DUYURU", m["metin"], m["baslik"], m["id"]) ? Mesaj.Basari("Duyuru ekrana geldi") : Mesaj.Hata("Ekranda açık oturum yok");
+
+                case "EKRAN_RESMI": return EkranResmi(m["genislik"]);
+
+                case "SABAH_PLANI":
+                    lock (kilit)
+                    {
+                        ayar.SabahSaat = m["saat"]; ayar.SabahGunler = m["gunler"]; ayar.SabahMacler = m["macler"];
+                        ayar.Yaz();
+                    }
+                    if (ayar.SabahSaat != "" && !ayar.WolHazir) WolHazirla();
+                    return Mesaj.Basari(ayar.SabahSaat == "" ? "Sabah açılma kapatıldı" : "Sabah açılma " + ayar.SabahSaat + " olarak kaydedildi");
 
                 case "KILITLE":
                     return EkranaGonder("KILITLE") ? Mesaj.Basari("Kilitlendi") : Mesaj.Hata("Ekranda açık oturum yok");
@@ -438,7 +521,7 @@ namespace Sem.Ajan
                         try { File.Delete(dosya); } catch { }
                         return kod == 0 || kod == 3010 ? "tamamlandı" : "bitti, çıkış kodu " + kod;
                     });
-                    return Mesaj.Basari("Kurulum başladı, sonucu 'Son işlem' sütununda görünecek");
+                    return Mesaj.Basari("Kurulum başladı, sonucu Etkinlik sayfasında görünecek");
                 }
 
                 case "YAZICI_KUR":
@@ -451,7 +534,7 @@ namespace Sem.Ajan
                         z.ExtractToDirectory(klasor);
                     string ip = m["ip"], ad = m["ad"], surucu = m["surucu"];
                     Arkaplan("Yazıcı kurulumu", () => YaziciKur(klasor, ip, ad, surucu));
-                    return Mesaj.Basari("Yazıcı kurulumu başladı, sonucu 'Son işlem' sütununda görünecek");
+                    return Mesaj.Basari("Yazıcı kurulumu başladı, sonucu Etkinlik sayfasında görünecek");
                 }
 
                 case "YAZICI_PAKET": return YaziciPaketi();
@@ -503,7 +586,26 @@ namespace Sem.Ajan
             r["uyari_dk"] = ayar.UyariDk.ToString(); r["ertele_dk"] = ayar.ErteleDk.ToString(); r["ertele_hak"] = ayar.ErteleHak.ToString();
             r["otomatik"] = ayar.OtomatikKapanma ? "1" : "0";
             r["oto_guncelle"] = ayar.OtoGuncelle ? "1" : "0";
+            r["sabah_saat"] = ayar.SabahSaat; r["sabah_gunler"] = ayar.SabahGunler;
+            lock (okunan) r["okunan"] = string.Join(";", okunan.Skip(Math.Max(0, okunan.Count - 50)));
             return r;
+        }
+
+        /// <summary>Ekran tarafından ekranın küçük bir JPEG görüntüsünü ister.</summary>
+        Mesaj EkranResmi(string genislik)
+        {
+            var id = Guid.NewGuid().ToString("N");
+            var b = new BekleyenResim();
+            lock (bekleyenResim) bekleyenResim[id] = b;
+            try
+            {
+                if (!EkranaGonder("RESIM", id, genislik)) return Mesaj.Hata("Ekranda açık oturum yok");
+                if (!b.Olay.Wait(6000)) return Mesaj.Hata("Ekran cevap vermedi");
+                if (b.Veri == "") return Mesaj.Hata(b.Hata != "" ? b.Hata : "Ekran görüntüsü alınamadı");
+                var r = Mesaj.Basari(); r.Veri = Convert.FromBase64String(b.Veri);
+                return r;
+            }
+            finally { lock (bekleyenResim) bekleyenResim.Remove(id); b.Olay.Dispose(); }
         }
 
         static string MacBul(IPAddress ip)

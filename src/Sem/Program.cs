@@ -35,7 +35,15 @@ namespace Sem
 
             if (mod == "/yonetim")
             {
-                Application.Run(new Yonetici.AnaForm());
+                bool tepsi = args.Skip(1).Any(a => a.Equals("/tepsi", StringComparison.OrdinalIgnoreCase));
+                bool ilk;
+                using (var m = new Mutex(true, @"Local\SemYonetim", out ilk))
+                using (var goster = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\SemYonetimGoster"))
+                {
+                    // Zaten açıksa (ör. saatin yanında bekliyorsa) o pencereyi öne getir.
+                    if (!ilk) { if (!tepsi) goster.Set(); return 0; }
+                    Application.Run(new Yonetici.AnaForm(tepsi, goster));
+                }
                 return 0;
             }
 

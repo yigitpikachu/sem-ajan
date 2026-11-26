@@ -11,6 +11,7 @@ namespace Sem.Ajan
         public static readonly string Klasor = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Sem");
         public static string Dosya => Path.Combine(Klasor, "ajan.ini");
         public static string DuvarKagidi => Path.Combine(Klasor, "duvar.png");
+        public static string OkunanDosya => Path.Combine(Klasor, "okunan.txt");
         public static readonly string KurulumKlasoru = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Sem");
         public static string KurulumExe => Path.Combine(KurulumKlasoru, "Sem.exe");
 
@@ -27,6 +28,12 @@ namespace Sem.Ajan
         public bool DuvarKoru = true;
         public bool OtomatikKapanma = true; // yönetici bilgisayarında kapalı
         public bool OtoGuncelle = true;     // GitHub'dan doğrulanmış yeni sürümü kendisi kursun
+
+        // Sabah açılma: bu bilgisayar açıksa, belirtilen saatte listedeki bilgisayarlara açma sinyali gönderir.
+        public string SabahSaat = "";       // "08:30"; boşsa kapalı
+        public string SabahGunler = "2,3,4,5,6"; // DayOfWeek (0 = Pazar)
+        public string SabahMacler = "";     // "AA-BB-..;CC-DD-.."
+        public bool WolHazir;               // ağ kartının uyandırma ayarı açıldı mı
 
         public static AjanAyar Oku()
         {
@@ -48,6 +55,10 @@ namespace Sem.Ajan
             if (d.TryGetValue("duvar_koru", out v)) a.DuvarKoru = v != "0";
             if (d.TryGetValue("otomatik_kapanma", out v)) a.OtomatikKapanma = v != "0";
             if (d.TryGetValue("oto_guncelle", out v)) a.OtoGuncelle = v != "0";
+            if (d.TryGetValue("sabah_saat", out v)) a.SabahSaat = v;
+            if (d.TryGetValue("sabah_gunler", out v)) a.SabahGunler = v;
+            if (d.TryGetValue("sabah_macler", out v)) a.SabahMacler = v;
+            if (d.TryGetValue("wol_hazir", out v)) a.WolHazir = v == "1";
             return a;
         }
 
@@ -64,6 +75,10 @@ namespace Sem.Ajan
             sb.AppendLine("duvar_koru=" + (DuvarKoru ? "1" : "0"));
             sb.AppendLine("otomatik_kapanma=" + (OtomatikKapanma ? "1" : "0"));
             sb.AppendLine("oto_guncelle=" + (OtoGuncelle ? "1" : "0"));
+            sb.AppendLine("sabah_saat=" + SabahSaat);
+            sb.AppendLine("sabah_gunler=" + SabahGunler);
+            sb.AppendLine("sabah_macler=" + SabahMacler);
+            sb.AppendLine("wol_hazir=" + (WolHazir ? "1" : "0"));
             var tmp = Dosya + ".tmp";
             File.WriteAllText(tmp, sb.ToString(), Encoding.UTF8);
             if (File.Exists(Dosya)) File.Replace(tmp, Dosya, null); else File.Move(tmp, Dosya);

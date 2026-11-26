@@ -1,6 +1,9 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.IO.Pipes;
 using System.Media;
 using System.Text;
@@ -51,6 +54,7 @@ namespace Sem.Ajan
                         while ((satir = oku.ReadLine()) != null)
                         {
                             var parca = EkranHatti.Coz(satir);
+                            if (parca[0] == "RESIM") { ThreadPool.QueueUserWorkItem(_ => ResimGonder(parca)); continue; }
                             gizli.BeginInvoke((Action)(() => { try { Isle(parca); } catch { } }));
                         }
                     }
@@ -71,8 +75,11 @@ namespace Sem.Ajan
             switch (p[0])
             {
                 case "DUYURU":
-                    new DuyuruForm(p[1], p.Length > 2 ? p[2] : "").Show();
+                {
+                    var id = p.Length > 3 ? p[3] : "";
+                    new DuyuruForm(p[1], p.Length > 2 ? p[2] : "", () => { if (id != "") Gonder("OKUNDU", id); }).Show();
                     break;
+                }
                 case "UYARI":
                     uyari?.Close();
                     uyari = new UyariForm(this, int.Parse(p[1]), int.Parse(p[2]), int.Parse(p[3]), p[4]);
@@ -99,6 +106,38 @@ namespace Sem.Ajan
                     Yerel.LockWorkStation();
                     break;
             }
+        }
+
+        /// <summary>Ekranın küçültülmüş JPEG görüntüsünü hizmete gönderir (yönetim ekranındaki önizleme için).</summary>
+        void ResimGonder(string[] p)
+        {
+            string id = p.Length > 1 ? p[1] : "";
+            try
+            {
+                int w; if (p.Length < 3 || !int.TryParse(p[2], out w)) w = 480;
+                var b = Screen.PrimaryScreen.Bounds;
+                w = Math.Max(160, Math.Min(Math.Min(1920, b.Width), w));
+                int h = Math.Max(1, (int)Math.Round(b.Height * (double)w / b.Width));
+                using (var ham = new Bitmap(b.Width, b.Height))
+                using (var kucuk = new Bitmap(w, h))
+                using (var ms = new MemoryStream())
+                {
+                    using (var g = Graphics.FromImage(ham)) g.CopyFromScreen(b.Location, Point.Empty, b.Size);
+                    using (var g = Graphics.FromImage(kucuk))
+                    {
+                        g.InterpolationMode = InterpolationMode.HighQualityBilinear; g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                        g.DrawImage(ham, new Rectangle(0, 0, w, h));
+                    }
+                    var jpeg = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
+                    using (var ep = new EncoderParameters(1))
+                    {
+                        ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 72L);
+                        kucuk.Save(ms, jpeg, ep);
+                    }
+                    Gonder("RESIM", id, Convert.ToBase64String(ms.ToArray()), "");
+                }
+            }
+            catch { Gonder("RESIM", id, "", "Ekran kilitli ya da görüntü alınamadı"); }
         }
 
         void DuvarKontrol(bool zorla)

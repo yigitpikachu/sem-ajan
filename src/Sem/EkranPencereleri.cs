@@ -12,7 +12,7 @@ namespace Sem.Ajan
     /// </summary>
     class DuyuruForm : Form
     {
-        public DuyuruForm(string metin, string baslik)
+        public DuyuruForm(string metin, string baslik, Action okundu = null)
         {
             FormBorderStyle = FormBorderStyle.None; StartPosition = FormStartPosition.Manual; TopMost = true; ShowInTaskbar = true;
             Text = "Sem Duyuru"; KeyPreview = true; DoubleBuffered = true;
@@ -94,10 +94,12 @@ namespace Sem.Ajan
 
             var tamam = new Buton("Tamam", Ik.Tik, ButonTuru.Birincil) { Font = Tema.YaziKalin(12f), Size = Tema.S(170, 52), Yaricap = 14 };
             tamam.Location = new Point(kart.Right - Tema.S(40) - tamam.Width, kart.Bottom - Tema.S(36) - tamam.Height);
-            tamam.Click += (s, e) => Close();
+            bool bitti = false;
+            Action kapat = () => { if (bitti) return; bitti = true; try { okundu?.Invoke(); } catch { } Close(); };
+            tamam.Click += (s, e) => kapat();
             Controls.Add(tamam);
             AcceptButton = null;
-            KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) Close(); };
+            KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) kapat(); };
             Shown += (s, e) => { Activate(); tamam.Focus(); SystemSounds.Asterisk.Play(); };
             FormClosed += (s, e) => zemin.Dispose();
         }

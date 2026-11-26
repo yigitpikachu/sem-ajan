@@ -16,6 +16,8 @@ namespace Sem.Ajan
         [DllImport("kernel32.dll", SetLastError = true)] public static extern bool CloseHandle(IntPtr h);
         [DllImport("kernel32.dll")] public static extern ulong GetTickCount64();
         [DllImport("user32.dll")] public static extern bool LockWorkStation();
+        [DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint esFlags);
+        public const uint ES_SYSTEM_REQUIRED = 0x00000001;
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern bool SystemParametersInfo(uint action, uint param, string vparam, uint winIni);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

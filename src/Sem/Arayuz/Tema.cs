@@ -50,7 +50,12 @@ namespace Sem.Arayuz
             Bilgi = "", Kisi = "", Yukari = "", Ev = "", Gonder = "", Zamanlayici = "",
             Kalkan = "", HepsiniSec = "", Dizustu = "", Zil = "", Sag = "", Kopuk = "",
             Daire = "", Uygulamalar = "", HataDaire = "", Goz = "", Sol = "", Eksi = "",
-            KapatDaire = "";
+            KapatDaire = "",
+            Kamera = "\uf255", Liste = "\uf4ee", Kareler = "\uf463", Kisiler = "\uf5a9", Duzenle = "\uf3de",
+            Mezuniyet = "\ue6e7", Kalp = "\uf47a", Bina = "\uf205", Kitap = "\uf8fe", Yapboz = "\ue9ea",
+            Muzik = "\ue855", Firca = "\uf593", Sohbet = "\uf287", Secenekler = "\uf588", Buyut = "\uf160",
+            Ac = "\uf583", Etiket = "\uf77d", Yildiz = "\uf710", Ogretmen = "\uf5ce", Oyun = "\uf451",
+            Okundu = "\uf522", AsagiOk = "\uf2a4", Pencere = "\uee5e", GozKapali = "\ue5f6", Parilti = "\ueb34";
     }
 
     public static class Tema
@@ -140,6 +145,23 @@ namespace Sem.Arayuz
             }
         }
 
+        /// <summary>Kenarlıksız, gölgeli kart. yukselti 0..1 arası: üzerine gelince kart hafifçe kalkar, gölge büyür.</summary>
+        public static void YuzenKart(Graphics g, RectangleF r, float yaricap, Color dolgu, float yukselti, Color? cizgi = null)
+        {
+            int kat = 3 + (int)Math.Round(yukselti * 4);
+            for (int i = kat; i >= 1; i--)
+            {
+                var gr = new RectangleF(r.X - i * 0.5f, r.Y + S(i) * (0.6f + yukselti * 0.6f), r.Width + i, r.Height);
+                using (var gp = Yuvarlak(gr, yaricap + i))
+                using (var b = new SolidBrush(Color.FromArgb((int)(6 + yukselti * 3), 60, 40, 10))) g.FillPath(b, gp);
+            }
+            using (var p = Yuvarlak(r, yaricap))
+            {
+                using (var b = new SolidBrush(dolgu)) g.FillPath(b, p);
+                if (cizgi != null) using (var pen = new Pen(cizgi.Value, 1f)) g.DrawPath(pen, p);
+            }
+        }
+
         public static void IkonCiz(Graphics g, string ikon, float boyut, Color renk, RectangleF alan)
         {
             using (var f = Ikon(boyut))
@@ -181,6 +203,27 @@ namespace Sem.Arayuz
                 DwmSetWindowAttribute(h, 36, ref y, 4);       // başlık yazı rengi
                 int k = Renk.Cizgi.R | (Renk.Cizgi.G << 8) | (Renk.Cizgi.B << 16);
                 DwmSetWindowAttribute(h, 34, ref k, 4);       // kenarlık rengi
+            }
+            catch { }
+        }
+
+        /// <summary>Pencereyi kısa bir saydamlık geçişiyle açar.</summary>
+        public static void Belir(Form f, int sureMs = 140)
+        {
+            if (Environment.OSVersion.Platform != PlatformID.Win32NT) return;
+            try
+            {
+                f.Opacity = 0;
+                var bas = DateTime.Now;
+                var t = new Timer { Interval = 15 };
+                t.Tick += (s, e) =>
+                {
+                    double o = Math.Min(1, (DateTime.Now - bas).TotalMilliseconds / sureMs);
+                    try { f.Opacity = o < 1 ? o : 1; } catch { }
+                    if (o >= 1) { t.Stop(); t.Dispose(); }
+                };
+                f.FormClosed += (s, e) => t.Dispose();
+                t.Start();
             }
             catch { }
         }

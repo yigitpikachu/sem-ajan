@@ -20,6 +20,13 @@ namespace Sem.Arayuz
         public bool Dikey { get; set; }  // ikon üstte, yazı altta (işlem çubuğu için)
         bool uzerinde, basili;
 
+        /// <summary>true ise tıklamak yetmez; düğme dolana kadar basılı tutulunca <see cref="Onaylandi"/> çalışır.</summary>
+        public bool BasiliTut { get; set; }
+        public int TutSuresiMs { get; set; } = 900;
+        public event EventHandler Onaylandi, KisaBasildi;
+        float ilerleme; bool tamamlandi; DateTime tutBaslangic;
+        Timer tutZaman;
+
         public Buton(string metin, string ikon = "", ButonTuru tur = ButonTuru.Ikincil)
         {
             Text = metin; Ikon = ikon; Tur = tur;
@@ -46,8 +53,41 @@ namespace Sem.Arayuz
         protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); Invalidate(); }
         protected override void OnMouseEnter(EventArgs e) { uzerinde = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { uzerinde = basili = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { basili = true; Invalidate(); base.OnMouseDown(e); }
-        protected override void OnMouseUp(MouseEventArgs e) { basili = false; Invalidate(); base.OnMouseUp(e); }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            basili = true; Invalidate();
+            if (BasiliTut && Enabled && e.Button == MouseButtons.Left)
+            {
+                tamamlandi = false; tutBaslangic = DateTime.Now;
+                if (tutZaman == null) { tutZaman = new Timer { Interval = 15 }; tutZaman.Tick += (s, a) => TutAdim(); Disposed += (s, a) => tutZaman.Dispose(); }
+                tutZaman.Start();
+            }
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            bool kisa = BasiliTut && !tamamlandi && basili && (DateTime.Now - tutBaslangic).TotalMilliseconds < 350;
+            basili = false; Invalidate(); base.OnMouseUp(e);
+            if (kisa) KisaBasildi?.Invoke(this, EventArgs.Empty);
+        }
+
+        void TutAdim()
+        {
+            if (basili && !tamamlandi)
+            {
+                ilerleme = (float)Math.Min(1, (DateTime.Now - tutBaslangic).TotalMilliseconds / TutSuresiMs);
+                if (ilerleme >= 1) { tamamlandi = true; basili = false; Onaylandi?.Invoke(this, EventArgs.Empty); }
+            }
+            else
+            {
+                ilerleme -= tamamlandi ? 0.05f : 0.12f;
+                if (ilerleme <= 0) { ilerleme = 0; tutZaman.Stop(); }
+            }
+            Invalidate();
+        }
+
+        protected override void OnClick(EventArgs e) { if (!BasiliTut) base.OnClick(e); }
         protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space) OnClick(EventArgs.Empty); base.OnKeyDown(e); }
 
         (Color dolgu, Color yazi, Color? cizgi) Renkler()
@@ -82,6 +122,15 @@ namespace Sem.Arayuz
                 if (dolgu.A > 0) using (var b = new SolidBrush(dolgu)) g.FillPath(b, p);
                 if (cizgi != null) using (var pen = new Pen(cizgi.Value)) g.DrawPath(pen, p);
                 if (Focused && ShowFocusCues) using (var pen = new Pen(Renk.Acik(Renk.Mavi, 140), Tema.S(2))) g.DrawPath(pen, p);
+                if (ilerleme > 0)
+                {
+                    // Basılı tutma: düğme alttan yukarı dolar
+                    var eski = g.Clip; g.SetClip(p, CombineMode.Intersect);
+                    float h = r.Height * ilerleme;
+                    var renk = ForeColorOzel != Color.Empty ? ForeColorOzel : Renk.Pembe;
+                    using (var b = new SolidBrush(Renk.Acik(renk, tamamlandi ? 70 : 46))) g.FillRectangle(b, r.X, r.Bottom - h, r.Width, h);
+                    g.Clip = eski;
+                }
             }
             var ikonRenk = yazi;
             if (Tur == ButonTuru.Sade || Tur == ButonTuru.Ikincil) ikonRenk = Enabled ? Renk.Yazi2 : Renk.Yazi3;
@@ -245,6 +294,7 @@ namespace Sem.Arayuz
         public float Yaricap = 14;
         public Color Dolgu = Renk.Yuzey;
         public bool Golge = true;
+        public bool Cizgisiz;
 
         public KartPanel()
         {
@@ -255,7 +305,8 @@ namespace Sem.Arayuz
         {
             using (var b = new SolidBrush(Parent?.BackColor ?? Renk.Zemin)) e.Graphics.FillRectangle(b, ClientRectangle);
             Tema.Kaliteli(e.Graphics);
-            Tema.Kart(e.Graphics, new Rectangle(0, 0, Width - 1, Height - Tema.S(Golge ? 4 : 1)), Tema.S(Yaricap), Dolgu, Renk.Cizgi, Golge);
+            if (Cizgisiz) Tema.YuzenKart(e.Graphics, new RectangleF(Tema.S(3), Tema.S(1), Width - Tema.S(6), Height - Tema.S(8)), Tema.S(Yaricap), Dolgu, 0);
+            else Tema.Kart(e.Graphics, new Rectangle(0, 0, Width - 1, Height - Tema.S(Golge ? 4 : 1)), Tema.S(Yaricap), Dolgu, Renk.Cizgi, Golge);
         }
     }
 
@@ -335,6 +386,7 @@ namespace Sem.Arayuz
                 if (fazla > 0) Height -= fazla;
             }
             base.OnLoad(e);
+            Tema.Belir(this);
         }
 
         protected void Tasi() { if (Environment.OSVersion.Platform == PlatformID.Win32NT) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } }
@@ -383,7 +435,6 @@ namespace Sem.Arayuz
         }
     }
 
-    /// <summary>Menüleri (sağ tık, "Diğer") yuvarlak ve sade gösteren çizici.</summary>
     /// <summary>Küçük, içerik kadar geniş açılır menü (Mac tarzı). Dışına tıklanınca kapanır.</summary>
     public class AcilirMenu : Form
     {
@@ -430,6 +481,7 @@ namespace Sem.Arayuz
             int x = Math.Min(p.X + yanina.Width - Width, ekran.Right - Width);
             int y = yukari ? p.Y - Height - Tema.S(6) : p.Y + yanina.Height + Tema.S(6);
             Location = new Point(Math.Max(ekran.Left, x), Math.Max(ekran.Top, Math.Min(y, ekran.Bottom - Height)));
+            Tema.Belir(this, 90);
             Show(yanina.FindForm());
         }
 
@@ -439,6 +491,7 @@ namespace Sem.Arayuz
             Yerlestir();
             var p = Cursor.Position; var ekran = Screen.FromPoint(p).WorkingArea;
             Location = new Point(Math.Min(p.X, ekran.Right - Width), Math.Min(p.Y, ekran.Bottom - Height));
+            Tema.Belir(this, 90);
             Show(sahip.FindForm());
         }
 
@@ -503,9 +556,12 @@ namespace Sem.Arayuz
             Sar(ic, () => new[] { -ic.AutoScrollPosition.Y, ic.DisplayRectangle.Height, ic.ClientSize.Height }, v => ic.AutoScrollPosition = new Point(0, v));
 
         /// <summary>Liste kutusunu ince çubuklu bir kutuya sarar.</summary>
-        public static Panel Sar(ListBox ic) =>
-            Sar(ic, () => new[] { ic.TopIndex * ic.ItemHeight, ic.Items.Count * ic.ItemHeight, ic.ClientSize.Height },
+        public static Panel Sar(ListBox ic)
+        {
+            ic.ScrollAlwaysVisible = true; // satır genişliği sabit kalsın (gizli çubuk hep aynı yeri kaplar)
+            return Sar(ic, () => new[] { ic.TopIndex * ic.ItemHeight, ic.Items.Count * ic.ItemHeight, ic.ClientSize.Height },
                     v => { if (ic.Items.Count > 0) ic.TopIndex = Math.Max(0, Math.Min(ic.Items.Count - 1, (int)Math.Round(v / (double)ic.ItemHeight))); });
+        }
 
         static Panel Sar(Control ic, Func<int[]> oku, Action<int> yaz)
         {
