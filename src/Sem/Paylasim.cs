@@ -2,8 +2,8 @@
 //  • Sem bilgisayarları arasında: şifreli TCP kanalı (PAYLAS_SOR / PAYLAS_DOSYA / PAYLAS_BITTI).
 //    Yönetici bilgisayarından gelenler sorulmadan kabul edilir, diğerlerinde ekranda Kabul/Reddet çıkar.
 //  • Telefonlarla: açık LocalSend protokolü (v2, düz HTTP). Telefondaki LocalSend uygulaması her bilgisayarı
-//    bir LocalSend cihazı olarak görür. Yönetici bilgisayarı telefonlarda "Sem Yazıcı" olarak görünür:
-//    ona gönderilen fotoğraf/PDF yazıcıdan çıkar.
+//    bir LocalSend cihazı olarak görür. Yönetici bilgisayarı telefonlarda "Müdür" olarak görünür:
+//    gelen dosya için Kaydet / Yazdır / Reddet sorulur.
 //  • Ortak klasör: yönetici bilgisayarındaki masaüstü "Sem Ortak" klasörü diğer bilgisayarlara tek yönlü kopyalanır.
 using System;
 using System.Collections.Generic;
@@ -315,13 +315,13 @@ namespace Sem.Ajan
         const int LsPort = 53317;
         static readonly IPAddress LsGrup = IPAddress.Parse("224.0.0.167");
         string Parmak => "sem-" + Ayar.Parmakizi;
-        string LsAd => Ayar.Yonetici ? "Sem Yazıcı" : Ayar.Isim;
+        string LsAd => Ayar.Yonetici ? "Müdür" : Ayar.Isim;
 
         Dictionary<string, object> Bilgi(bool tam = true)
         {
             var d = new Dictionary<string, object>
             {
-                ["alias"] = LsAd, ["version"] = "2.0", ["deviceModel"] = Ayar.Yonetici ? "Sem Yazıcı" : "Sem Ajan",
+                ["alias"] = LsAd, ["version"] = "2.0", ["deviceModel"] = "Sem Ajan",
                 ["deviceType"] = Ayar.Yonetici ? "server" : "desktop", ["fingerprint"] = Parmak, ["download"] = false,
             };
             if (tam) { d["port"] = LsPort; d["protocol"] = "http"; }
@@ -559,15 +559,17 @@ namespace Sem.Ajan
             var dosyalar = liste.Where(x => !(x.tur.StartsWith("text/") && x.onizleme != "")).ToList();
             var ozet = DosyaOzeti(dosyalar.Select(x => (x.ad, x.boyut)).ToList());
 
-            bool yazdir = Ayar.Yonetici;
-            if (yazdir)
+            bool yazdir = false;
+            if (Ayar.Yonetici)
             {
+                // Müdür bilgisayarı: Kaydet (1) / her zaman izin ver (2) / Yazdır (3) / Reddet (0).
                 bool izinli = parmak != "" && Ayar.YaziciIzinli.Split(';').Contains(parmak);
                 if (!izinli)
                 {
-                    int c = Sor("yazdir", kimden + " yazdırmak istiyor", ozet, 120);
+                    int c = Sor("mudur", kimden + " dosya gönderiyor", ozet, 120);
                     if (c <= 0) { Yanit(r, 403, null); return; }
-                    if (c == 2 && parmak != "") servis.AyarDegistir(a => a.YaziciIzinli = string.Join(";", a.YaziciIzinli.Split(';').Where(x => x != "").Concat(new[] { parmak }).Distinct().Skip(0)));
+                    if (c == 2 && parmak != "") servis.AyarDegistir(a => a.YaziciIzinli = string.Join(";", a.YaziciIzinli.Split(';').Where(x => x != "").Concat(new[] { parmak }).Distinct()));
+                    yazdir = c == 3;
                 }
             }
             else

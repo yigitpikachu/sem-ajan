@@ -678,7 +678,7 @@ namespace Sem.Yonetici
             Icerik.Controls.Add(paylasim); y += Tema.S(36);
             telefon = new Anahtar("Telefonlardan dosya kabul et (LocalSend)", "") { Location = new Point(0, y), Width = g, Acik = telefonAcik };
             Icerik.Controls.Add(telefon); y += Tema.S(40);
-            var pnot = Yazi.Etiket("Telefondaki LocalSend uygulaması bilgisayarları adlarıyla görür. Bu bilgisayar telefonlarda \"Sem Yazıcı\" olarak görünür: gönderilen fotoğraf ve PDF'ler yazıcıdan çıkar.", 9f, false, Renk.Yazi2, false);
+            var pnot = Yazi.Etiket("Telefondaki LocalSend uygulaması bilgisayarları adlarıyla görür. Bu bilgisayar telefonlarda \"Müdür\" olarak görünür: gelen dosya için Kaydet, Yazdır ya da Reddet sorulur.", 9f, false, Renk.Yazi2, false);
             pnot.SetBounds(0, y, g, Tema.S(52));
             Icerik.Controls.Add(pnot);
             paylasim.Degisti += (s, e) => { telefon.Enabled = paylasim.Acik; telefon.Invalidate(); };

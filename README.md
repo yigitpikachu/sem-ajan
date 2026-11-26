@@ -25,7 +25,7 @@ Sem Özel Eğitim ve Rehabilitasyon Merkezi'ndeki bilgisayarları tek yerden yö
 - Yönetici bilgisayarından gelenler doğrudan alınır, diğerleri için Kabul/Reddet sorulur
 - Masaüstünde "Sem Dosyalar": Gelen (gönderene göre klasörlü), Gönderilen, Ortak
 - Ortak klasör: yönetici masaüstündeki "Sem Ortak" klasörü tüm bilgisayarlara kendiliğinden kopyalanır
-- Telefondan yazdır: yönetici bilgisayarı telefonlarda "Sem Yazıcı" olarak görünür, gönderilen fotoğraf ve PDF onayla yazıcıdan çıkar
+- Yönetici bilgisayarı telefonlarda "Müdür" olarak görünür; gelen dosya için Kaydet, Yazdır (fotoğraf ve PDF) ya da Reddet sorulur
 
 **Bakım**
 - Kurumsal, mevsimlik ve özel günlere göre kendiliğinden değişen duvar kâğıdı ve kilit ekranı, istenirse oda adıyla (değiştirilirse geri gelir)

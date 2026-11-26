@@ -64,15 +64,15 @@ namespace Sem.Ajan
         readonly int sure;
         readonly Panel cubuk;
 
-        public SoruKarti(string tur, string baslik, string metin, int sn, Action<int> cevap) : base(400, 36 + 50 + 16 * Satir(metin) + 14 + (tur == "yazdir" ? 32 : 0) + 36)
+        public SoruKarti(string tur, string baslik, string metin, int sn, Action<int> cevap) : base(400, 36 + 50 + 16 * Satir(metin) + 14 + (tur == "mudur" ? 32 : 0) + 36)
         {
             this.cevap = cevap; sure = Math.Max(10, sn); son = DateTime.Now.AddSeconds(sure);
-            Baslik(baslik, tur == "yazdir" ? "Sem Yazıcı" : "Sem Paylaş");
+            Baslik(baslik, "Sem Paylaş");
             var m = Yazi.Etiket(metin, 9f, false, Renk.Yazi2, false); m.SetBounds(0, Tema.S(50), Icerik.Width, Tema.S(16 * Satir(metin) + 4));
             Icerik.Controls.Add(m);
 
             int y = Icerik.Height - Tema.S(36);
-            var kabul = new Buton(tur == "yazdir" ? "Yazdır" : "Kabul et", tur == "yazdir" ? Ik.YaziciIk : Ik.Tik, ButonTuru.Birincil) { Height = Tema.S(36) };
+            var kabul = new Buton(tur == "mudur" ? "Kaydet" : "Kabul et", Ik.Tik, ButonTuru.Birincil) { Height = Tema.S(36) };
             var red = new Buton("Reddet", "", ButonTuru.Ikincil) { Height = Tema.S(36) };
             kabul.BoyutAyarla(); red.BoyutAyarla();
             kabul.Location = new Point(Icerik.Width - kabul.Width, y);
@@ -80,8 +80,13 @@ namespace Sem.Ajan
             kabul.Click += (s, e) => Bitir(1);
             red.Click += (s, e) => Bitir(0);
             Icerik.Controls.Add(kabul); Icerik.Controls.Add(red);
-            if (tur == "yazdir")
+            if (tur == "mudur")
             {
+                var yaz = new Buton("Yazdır", Ik.YaziciIk, ButonTuru.Ikincil) { Height = Tema.S(36) };
+                yaz.BoyutAyarla();
+                yaz.Location = new Point(red.Left - Tema.S(8) - yaz.Width, y);
+                yaz.Click += (s, e) => Bitir(3);
+                Icerik.Controls.Add(yaz);
                 var her = new Buton("Bu telefona her zaman izin ver", "", ButonTuru.Sade) { Height = Tema.S(28), Font = Tema.Yazi(8.75f) };
                 her.BoyutAyarla(); her.Location = new Point(-Tema.S(8), y - Tema.S(34));
                 her.Click += (s, e) => Bitir(2);
