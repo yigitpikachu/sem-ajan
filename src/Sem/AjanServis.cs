@@ -454,6 +454,8 @@ namespace Sem.Ajan
                     return Mesaj.Basari("Yazıcı kurulumu başladı, sonucu 'Son işlem' sütununda görünecek");
                 }
 
+                case "YAZICI_PAKET": return YaziciPaketi();
+
                 case "YAZICI_ONAR":
                     Arkaplan("Yazıcı onarımı", () =>
                     {
@@ -571,6 +573,46 @@ namespace Sem.Ajan
             string cikti;
             int kod = Calistir("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"" + dosya + "\"", true, out cikti);
             return kod == 0 ? "tamamlandı: " + ad + " (" + surucu + ")" : "HATA: " + Kisalt(cikti, 300);
+        }
+
+        /// <summary>
+        /// Bu bilgisayarda kurulu Canon yazıcının sürücü paketini (DriverStore klasörü) zip olarak döndürür;
+        /// yazıcının adı, sürücü adı ve IP adresi de eklenir. Yönetim ekranı bunu diğer bilgisayarlara kurar.
+        /// </summary>
+        static Mesaj YaziciPaketi()
+        {
+            var klasor = Path.Combine(AjanAyar.Klasor, "yazici_paket");
+            try { if (Directory.Exists(klasor)) Directory.Delete(klasor, true); } catch { }
+            Directory.CreateDirectory(klasor);
+            var surucuKlasor = Path.Combine(klasor, "surucu");
+            var bilgi = Path.Combine(klasor, "bilgi.txt");
+            Func<string, string> t = x => x.Replace("'", "''");
+            var ps = "$ErrorActionPreference='Stop'\r\n" +
+                     "$y = Get-Printer | Where-Object { $_.Name -like '*1643*' -or $_.DriverName -like '*1643*' } | Select-Object -First 1\r\n" +
+                     "if (-not $y) { $y = Get-Printer | Where-Object { $_.DriverName -like 'Canon*' } | Select-Object -First 1 }\r\n" +
+                     "if (-not $y) { throw 'Bu bilgisayarda kurulu Canon yazıcı bulunamadı' }\r\n" +
+                     "$d = Get-PrinterDriver -Name $y.DriverName\r\n" +
+                     "$kaynak = Split-Path -Parent $d.InfPath\r\n" +
+                     $"Copy-Item -Path $kaynak -Destination '{t(surucuKlasor)}' -Recurse\r\n" +
+                     "$ip = ''\r\n" +
+                     "try { $ip = (Get-PrinterPort -Name $y.PortName).PrinterHostAddress } catch { }\r\n" +
+                     "if (-not $ip -and $y.PortName -match '(\\d{1,3}\\.){3}\\d{1,3}') { $ip = $Matches[0] }\r\n" +
+                     $"Set-Content -Path '{t(bilgi)}' -Encoding UTF8 -Value @(('ad=' + $y.Name), ('surucu=' + $y.DriverName), ('ip=' + $ip))\r\n";
+            var dosya = Path.Combine(klasor, "paket.ps1");
+            File.WriteAllText(dosya, ps, new UTF8Encoding(true));
+            string cikti;
+            int kod = Calistir("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"" + dosya + "\"", true, out cikti);
+            if (kod != 0 || !File.Exists(bilgi)) return Mesaj.Hata(Kisalt(cikti, 300));
+            var r = Mesaj.Basari();
+            foreach (var satir in File.ReadAllLines(bilgi, Encoding.UTF8))
+            {
+                int i = satir.IndexOf('='); if (i > 0) r[satir.Substring(0, i).Trim().TrimStart('\uFEFF')] = satir.Substring(i + 1).Trim();
+            }
+            var zip = Path.Combine(klasor, "surucu.zip");
+            ZipFile.CreateFromDirectory(surucuKlasor, zip, CompressionLevel.Optimal, false);
+            r.Veri = File.ReadAllBytes(zip);
+            try { Directory.Delete(klasor, true); } catch { }
+            return r;
         }
 
         /// <summary>INF dosyalarındaki model adlarından en uygununu seçer (önce 1643, sonra Generic Plus UFR II).</summary>

@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Sem.Ajan;
@@ -85,7 +86,7 @@ namespace Sem.Yonetici
         public string Baslik => bas.Text.Trim();
         public string Metin => metin.Text.Trim();
 
-        public DuyuruYazForm(int kisi) : base("Duyuru gönder", 580, 560)
+        public DuyuruYazForm(int kisi) : base("Duyuru gönder", 540, 520)
         {
             int g = Icerik.Width;
             var a = Yazi.Etiket(kisi + " bilgisayarın ekranının ortasında görünecek ve \"Tamam\"a basılana kadar kapanmayacak.", 10f, false, Renk.Yazi2, false);
@@ -94,11 +95,11 @@ namespace Sem.Yonetici
             Diyalog.Baslik(Icerik, "Başlık", Tema.S(48));
             bas = new Giris { Text = "Duyuru", Location = new Point(0, Tema.S(72)), Width = g };
             Diyalog.Baslik(Icerik, "Mesaj", Tema.S(128));
-            metin = new Giris(false, true) { Location = new Point(0, Tema.S(152)), Width = g, Height = Tema.S(180) };
+            metin = new Giris(false, true) { Location = new Point(0, Tema.S(152)), Width = g, Height = Tema.S(120) };
             Icerik.Controls.Add(bas); Icerik.Controls.Add(metin);
 
-            Diyalog.Baslik(Icerik, "Hazır mesajlar", Tema.S(344));
-            var hazir = new FlowLayoutPanel { Location = new Point(-Tema.S(4), Tema.S(364)), Size = new Size(g + Tema.S(8), Tema.S(52)), BackColor = Renk.Zemin };
+            Diyalog.Baslik(Icerik, "Hazır mesajlar", Tema.S(284));
+            var hazir = new FlowLayoutPanel { Location = new Point(-Tema.S(4), Tema.S(304)), Size = new Size(g + Tema.S(8), Tema.S(44)), BackColor = Renk.Zemin };
             foreach (var (b, m) in new[] {
                 ("Toplantı", "Öğretmenler odasında 10 dakika sonra kısa bir toplantı yapılacaktır."),
                 ("Ders bitiyor", "Ders süresi bitmek üzere. Lütfen çalışmalarınızı kaydedin."),
@@ -186,6 +187,8 @@ namespace Sem.Yonetici
 
     class YaziciForm : ModernForm
     {
+        /// <summary>Merkezdeki Canon i-SENSYS X 1643P'nin adresi.</summary>
+        public const string VarsayilanIp = "192.168.1.50";
         readonly Giris klasor, ip, ad, surucu;
         public string Klasor => klasor.Text.Trim();
         public string Ip => ip.Text.Trim();
@@ -203,7 +206,7 @@ namespace Sem.Yonetici
             var sec = new Buton("Seç…", Ik.Klasor, ButonTuru.Ikincil) { Location = new Point(g - Tema.S(104), Tema.S(84)), Width = Tema.S(104), Height = Tema.S(42) };
             sec.Click += (s, e) => { using (var d = new FolderBrowserDialog { Description = "Sürücü klasörünü seçin" }) if (d.ShowDialog(this) == DialogResult.OK) klasor.Text = d.SelectedPath; };
             Diyalog.Baslik(Icerik, "Yazıcının IP adresi", Tema.S(140));
-            ip = new Giris { Location = new Point(0, Tema.S(164)), Width = Tema.S(220), Ipucu = "ör. 192.168.1.50" };
+            ip = new Giris { Text = VarsayilanIp, Location = new Point(0, Tema.S(164)), Width = Tema.S(220), Ipucu = "ör. 192.168.1.50" };
             var ipNot = Yazi.Etiket("Yazıcının ekranında Menü → Ağ ayarları\nbölümünde yazar.", 9f, false, Renk.Yazi3, false); ipNot.SetBounds(Tema.S(236), Tema.S(166), g - Tema.S(236), Tema.S(40));
             Diyalog.Baslik(Icerik, "Bilgisayarlarda görünecek ad", Tema.S(220));
             ad = new Giris { Text = "Canon i-SENSYS X 1643P", Location = new Point(0, Tema.S(244)), Width = g };
@@ -261,7 +264,7 @@ namespace Sem.Yonetici
         readonly DosyaListesi l;
         string mevcut = "";
 
-        public DosyaTarayici(Pc pc) : base("Dosya al  ·  " + pc.Ad, 780, 620)
+        public DosyaTarayici(Pc pc) : base("Dosya al  ·  " + pc.Ad, 720, 560)
         {
             this.pc = pc;
             int g = Icerik.Width;
@@ -270,7 +273,7 @@ namespace Sem.Yonetici
             yol = Yazi.Etiket("", 10f, false, Renk.Yazi2, false); yol.SetBounds(Tema.S(100), 0, g - Tema.S(100), Tema.S(40)); yol.TextAlign = ContentAlignment.MiddleLeft; yol.AutoEllipsis = true;
             var kart = new KartPanel { Location = new Point(0, Tema.S(52)), Size = new Size(g, Icerik.Height - Tema.S(112)), Padding = Tema.Pd(6, 8, 6, 12), BackColor = Renk.Zemin, Golge = false, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
             l = new DosyaListesi { Dock = DockStyle.Fill };
-            kart.Controls.Add(l);
+            kart.Controls.Add(InceKaydirma.Sar(l));
             durum = Yazi.Etiket("", 9.5f, false, Renk.Yazi2, false); durum.SetBounds(0, Icerik.Height - Tema.S(40), g - Tema.S(200), Tema.S(40)); durum.TextAlign = ContentAlignment.MiddleLeft;
             var indir = new Buton("Seçilenleri indir", Ik.Indir, ButonTuru.Birincil);
             indir.Location = new Point(g - indir.Width, Icerik.Height - indir.Height);
@@ -403,38 +406,60 @@ namespace Sem.Yonetici
         readonly Panel durumIkon;
         string ikon = Ik.Esitle; Color renk = Renk.Mavi;
 
-        public GuncellemeForm(bool otoAcik) : base("Güncellemeler", 520, 500)
+        readonly Anahtar oto;
+        readonly Buton dosya, kapat;
+
+        public GuncellemeForm(bool otoAcik) : base("Güncellemeler", 460, 420)
         {
             int g = Icerik.Width;
-            var kart = new KartPanel { Location = new Point(0, 0), Size = new Size(g, Tema.S(96)), BackColor = Renk.Zemin, Golge = false };
-            durumIkon = new Panel { Size = Tema.S(48, 48), Location = Tema.P(18, 20), BackColor = Renk.Yuzey };
-            durumIkon.Paint += (s, e) => { Tema.Kaliteli(e.Graphics); using (var b = new SolidBrush(Renk.Acik(renk, 30))) e.Graphics.FillEllipse(b, 0, 0, durumIkon.Width - 1, durumIkon.Height - 1); Tema.IkonCiz(e.Graphics, ikon, 15f, renk, new RectangleF(0, 0, durumIkon.Width, durumIkon.Height)); };
-            durum = Yazi.Etiket("Yeni sürüm denetleniyor…", 12f, true); durum.BackColor = Renk.Yuzey; durum.Location = Tema.P(80, 22);
-            var kurulu = Yazi.Etiket("Kurulu sürüm: " + Sabitler.Surum + "  ·  github.com/" + Guncelleme.Depo, 9f, false, Renk.Yazi2); kurulu.BackColor = Renk.Yuzey; kurulu.Location = Tema.P(81, 50);
+            var kart = new KartPanel { Location = new Point(0, 0), Size = new Size(g, Tema.S(80)), BackColor = Renk.Zemin, Golge = false };
+            durumIkon = new Panel { Size = Tema.S(40, 40), Location = Tema.P(16, 20), BackColor = Renk.Yuzey };
+            durumIkon.Paint += (s, e) => { Tema.Kaliteli(e.Graphics); using (var b = new SolidBrush(Renk.Acik(renk, 30))) e.Graphics.FillEllipse(b, 0, 0, durumIkon.Width - 1, durumIkon.Height - 1); Tema.IkonCiz(e.Graphics, ikon, 13f, renk, new RectangleF(0, 0, durumIkon.Width, durumIkon.Height)); };
+            durum = Yazi.Etiket("Yeni sürüm denetleniyor…", 11f, true); durum.BackColor = Renk.Yuzey; durum.Location = Tema.P(68, 18);
+            var kurulu = Yazi.Etiket("Kurulu sürüm: " + Sabitler.Surum, 9f, false, Renk.Yazi2); kurulu.BackColor = Renk.Yuzey; kurulu.Location = Tema.P(69, 44);
             kart.Controls.AddRange(new Control[] { durumIkon, durum, kurulu });
             Icerik.Controls.Add(kart);
 
-            notlar = Yazi.Etiket("", 10f, false, Renk.Yazi, false);
-            notlar.SetBounds(0, Tema.S(110), g, Tema.S(150));
+            notlar = Yazi.Etiket("", 9.5f, false, Renk.Yazi2, false);
             Icerik.Controls.Add(notlar);
 
-            dagit = new Buton("İndir ve tüm bilgisayarlara dağıt", Ik.Indir, ButonTuru.Birincil) { Width = g, Height = Tema.S(46), Location = new Point(0, Tema.S(268)), Visible = false };
+            dagit = new Buton("İndir ve tüm bilgisayarlara dağıt", Ik.Indir, ButonTuru.Birincil) { Width = g, Height = Tema.S(42), Visible = false };
             dagit.Click += (s, e) => Dagit();
             Icerik.Controls.Add(dagit);
 
-            var oto = new Anahtar("Otomatik güncelleme", "Bilgisayarlar yeni sürümü günde birkaç kez kendileri denetler ve doğrulandıysa kurar.") { Location = new Point(0, Tema.S(326)), Width = g, Acik = otoAcik };
+            oto = new Anahtar("Otomatik güncelleme", "Bilgisayarlar yeni sürümü kendileri denetleyip kurar.") { Width = g, Acik = otoAcik };
             oto.Degisti += (s, e) => OtoGuncelle = oto.Acik;
             Icerik.Controls.Add(oto);
 
-            var dosya = new Buton("Dosyadan güncelle…", Ik.Klasor, ButonTuru.Sade) { Font = Tema.Yazi(9.5f) };
-            dosya.BoyutAyarla(); dosya.Location = new Point(0, Icerik.Height - dosya.Height); dosya.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            dosya = new Buton("Dosyadan güncelle…", Ik.Klasor, ButonTuru.Sade) { Font = Tema.Yazi(9.5f) };
+            dosya.BoyutAyarla();
             dosya.Click += (s, e) => { DosyadanSec = true; DialogResult = DialogResult.OK; Close(); };
-            var kapat = new Buton("Kapat", "", ButonTuru.Ikincil) { Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            kapat.Width = Tema.S(110); kapat.Location = new Point(g - kapat.Width, Icerik.Height - kapat.Height);
+            kapat = new Buton("Kapat", "", ButonTuru.Ikincil);
+            kapat.Width = Tema.S(100);
             kapat.Click += (s, e) => { DialogResult = OtoGuncelle != null ? DialogResult.OK : DialogResult.Cancel; Close(); };
             Icerik.Controls.Add(dosya); Icerik.Controls.Add(kapat);
+            Diz();
 
             Shown += (s, e) => Denetle();
+        }
+
+        /// <summary>Görünen parçaları alt alta dizer, pencereyi içeriği kadar boyutlandırır.</summary>
+        void Diz()
+        {
+            int g = Icerik.Width, y = Tema.S(92);
+            int nh = 0;
+            if (notlar.Text != "")
+            {
+                using (var gr = notlar.CreateGraphics()) nh = Math.Min(Tema.S(140), (int)Math.Ceiling(gr.MeasureString(notlar.Text, notlar.Font, g).Height) + Tema.S(2));
+            }
+            notlar.SetBounds(0, y, g, nh); notlar.Visible = nh > 0; if (nh > 0) y += nh + Tema.S(12);
+            if (dagit.Visible) { dagit.Location = new Point(0, y); y += dagit.Height + Tema.S(16); }
+            oto.Location = new Point(0, y); y += oto.Height + Tema.S(18);
+            dosya.Location = new Point(0, y + (kapat.Height - dosya.Height) / 2);
+            kapat.Location = new Point(g - kapat.Width, y);
+            y += kapat.Height;
+            foreach (Control c in Icerik.Controls) c.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            ClientSize = new Size(ClientSize.Width, Icerik.Top + y + Tema.S(20));
         }
 
         void Durum(string metin, string ik, Color r) { durum.Text = metin; ikon = ik; renk = r; durumIkon.Invalidate(); }
@@ -457,12 +482,19 @@ namespace Sem.Yonetici
                             notlar.Text = string.IsNullOrWhiteSpace(s.Notlar) ? "Bu sürümle ilgili not yok." : s.Notlar.Trim();
                             dagit.Visible = true;
                         }
-                        else { Durum("Sem güncel", Ik.TikDaire, Renk.Yesil); notlar.Text = "En son sürüm (" + s.Etiket + ") zaten kurulu."; }
+                        else { Durum("Sem Ajan güncel", Ik.TikDaire, Renk.Yesil); notlar.Text = "En son sürüm (" + s.Etiket + ") zaten kurulu."; }
+                        Diz();
                     }));
                 }
                 catch (Exception e)
                 {
-                    BeginInvoke((Action)(() => { Durum("Denetlenemedi", Ik.Uyari, Renk.Pembe); notlar.Text = "İnternet bağlantısını kontrol edin.\n(" + e.Message + ")"; }));
+                    var yok = e is WebException we && we.Response is HttpWebResponse r && r.StatusCode == HttpStatusCode.NotFound;
+                    BeginInvoke((Action)(() =>
+                    {
+                        if (yok) { Durum("Henüz yayınlanmış sürüm yok", Ik.Bilgi, Renk.Mavi); notlar.Text = "Yeni bir sürüm yayınlanınca burada görünecek."; }
+                        else { Durum("Denetlenemedi", Ik.Uyari, Renk.Pembe); notlar.Text = "İnternet bağlantısını kontrol edin. (" + e.Message + ")"; }
+                        Diz();
+                    }));
                 }
             });
         }
@@ -479,7 +511,7 @@ namespace Sem.Yonetici
                 }
                 catch (Exception e)
                 {
-                    BeginInvoke((Action)(() => { dagit.Enabled = true; dagit.Text = "Tekrar dene"; Durum("İndirilemedi", Ik.Uyari, Renk.Pembe); notlar.Text = e.Message; }));
+                    BeginInvoke((Action)(() => { dagit.Enabled = true; dagit.Text = "Tekrar dene"; Durum("İndirilemedi", Ik.Uyari, Renk.Pembe); notlar.Text = e.Message; Diz(); }));
                 }
             });
         }

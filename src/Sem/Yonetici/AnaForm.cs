@@ -27,6 +27,7 @@ namespace Sem.Yonetici
         readonly Panel sayfaPc, sayfaKayit;
         readonly MenuOgesi menuPc, menuKayit, menuGuncelle;
         readonly Izgara izgara;
+        readonly Panel altBosluk = new Panel { Height = Tema.S(110), Width = Tema.S(10), Margin = Padding.Empty, BackColor = Renk.Zemin };
         readonly Label altBaslik, bosMesaj, secimYazi;
         readonly OzetKart ozAcik, ozKapali, ozKapanma;
         readonly KartPanel islemCubugu;
@@ -88,7 +89,7 @@ namespace Sem.Yonetici
             ozKapanma = new OzetKart("Bugünkü kapanma", Ik.Guc, Renk.Turuncu);
             ozet.Controls.AddRange(new Control[] { ozAcik, ozKapali, ozKapanma });
 
-            izgara = new Izgara { Dock = DockStyle.Fill, Padding = Tema.Pd(0, 4, 0, 120) };
+            izgara = new Izgara { Dock = DockStyle.Fill, Padding = Tema.Pd(0, 4, 0, 0) };
             izgara.AllowDrop = true;
             izgara.DragEnter += (s, e) => e.Effect = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
             izgara.DragDrop += (s, e) => DosyaGonder((string[])e.Data.GetData(DataFormats.FileDrop));
@@ -114,7 +115,7 @@ namespace Sem.Yonetici
                 var b = new Buton(metin, ikon, ButonTuru.Sade) { Dikey = true, ForeColorOzel = renk, Font = Tema.Yazi(8.5f) };
                 b.BoyutAyarla(); b.Width = Math.Max(b.Width, Tema.S(84)); b.Location = new Point(bx, Tema.S(14)); b.BackColor = Color.Transparent;
                 if (is_ != null) b.Click += (s, e) => Guvenli(is_);
-                else b.Click += (s, e) => DigerMenu().Show(b, new Point(0, -Tema.S(8)), ToolStripDropDownDirection.AboveRight);
+                else b.Click += (s, e) => DigerMenu().Goster(b, true);
                 islemCubugu.Controls.Add(b); islemDugmeleri.Add(b);
                 bx += b.Width + Tema.S(2);
             }
@@ -129,8 +130,9 @@ namespace Sem.Yonetici
             tostZaman.Tick += (s, e) => { tost.Visible = false; tostZaman.Stop(); };
             tost.Click += (s, e) => { SayfaGoster(false); }; tostYazi.Click += (s, e) => SayfaGoster(false);
 
-            sayfaPc.Controls.Add(izgara); sayfaPc.Controls.Add(ozet); sayfaPc.Controls.Add(bas);
+            sayfaPc.Controls.Add(InceKaydirma.Sar(izgara)); sayfaPc.Controls.Add(ozet); sayfaPc.Controls.Add(bas);
             izgara.Controls.Add(bosMesaj);
+            izgara.Controls.Add(altBosluk); // alttaki işlem çubuğu son sıradaki kartları örtmesin
             sayfaPc.Controls.Add(islemCubugu); islemCubugu.BringToFront();
             sayfaPc.Controls.Add(tost); tost.BringToFront();
             sayfaPc.Resize += (s, e) => Yerlestir();
@@ -144,7 +146,7 @@ namespace Sem.Yonetici
             kbas.Controls.AddRange(new Control[] { ke, kh, ka });
             var kkart = new KartPanel { Dock = DockStyle.Fill, Padding = Tema.Pd(4, 10, 4, 14), BackColor = Renk.Zemin };
             kayit = new KayitListesi { Dock = DockStyle.Fill };
-            kkart.Controls.Add(kayit);
+            kkart.Controls.Add(InceKaydirma.Sar(kayit));
             sayfaKayit.Controls.Add(kkart); sayfaKayit.Controls.Add(kbas);
 
             Controls.Add(sayfaPc); Controls.Add(sayfaKayit); Controls.Add(yan);
@@ -187,22 +189,18 @@ namespace Sem.Yonetici
 
         void Guvenli(Action a) { try { a(); } catch (Exception ex) { Kaydet("Hata: " + ex.Message, 2); Tost("Hata: " + ex.Message); } }
 
-        ContextMenuStrip DigerMenu()
-        {
-            var m = new ContextMenuStrip { Renderer = new MenuCizici(), ShowImageMargin = true, Font = Tema.Yazi(10f), Padding = Tema.Pd(4, 6, 4, 6) };
-            m.Items.Add(MenuCizici.Oge("Bugün kapanmasın", Ik.Duraklat, (s, e) => Guvenli(BugunKapatma)));
-            m.Items.Add(MenuCizici.Oge("Kapanma saatleri", Ik.Takvim, (s, e) => Guvenli(KapanmaSaatleri)));
-            m.Items.Add(MenuCizici.Oge("Duvar kâğıdı", Ik.Resim, (s, e) => Guvenli(DuvarKagidi)));
-            m.Items.Add(MenuCizici.Oge("Uyandır (aç)", Ik.Gunes, (s, e) => Guvenli(Uyandir)));
-            m.Items.Add(new ToolStripSeparator());
-            m.Items.Add(MenuCizici.Oge("Yazıcı kur", Ik.Yazici, (s, e) => Guvenli(YaziciKur)));
-            m.Items.Add(MenuCizici.Oge("Yazıcıyı onar", Ik.Anahtar_, (s, e) => Guvenli(YaziciOnar)));
-            m.Items.Add(MenuCizici.Oge("Program kur", Ik.ProgramEkle, (s, e) => Guvenli(ProgramKur)));
-            m.Items.Add(MenuCizici.Oge("Sem Ajan'ı güncelle (dosyadan)", Ik.Esitle, (s, e) => Guvenli(SemGuncelle)));
-            m.Items.Add(new ToolStripSeparator());
-            m.Items.Add(MenuCizici.Oge("Listeden çıkar", Ik.Sil, (s, e) => Guvenli(ListedenCikar), true));
-            return m;
-        }
+        AcilirMenu DigerMenu() => new AcilirMenu()
+            .Ekle("Bugün kapanmasın", Ik.Duraklat, () => Guvenli(BugunKapatma))
+            .Ekle("Kapanma saatleri", Ik.Takvim, () => Guvenli(KapanmaSaatleri))
+            .Ekle("Duvar kâğıdı", Ik.Resim, () => Guvenli(DuvarKagidi))
+            .Ekle("Uyandır (aç)", Ik.Gunes, () => Guvenli(Uyandir))
+            .Ayrac()
+            .Ekle("Yazıcı kur", Ik.Yazici, () => Guvenli(YaziciKur))
+            .Ekle("Yazıcıyı onar", Ik.Anahtar_, () => Guvenli(YaziciOnar))
+            .Ekle("Program kur", Ik.ProgramEkle, () => Guvenli(ProgramKur))
+            .Ekle("Dosyadan güncelle", Ik.Esitle, () => Guvenli(SemGuncelle))
+            .Ayrac()
+            .Ekle("Listeden çıkar", Ik.Sil, () => Guvenli(ListedenCikar), true);
 
         // ------------------------------------------------------------------ Giriş
         bool Giris()
@@ -269,7 +267,7 @@ namespace Sem.Yonetici
 
         void ListeyiCiz()
         {
-            List<Pc> kopya; lock (pcKilit) kopya = pcler.OrderBy(p => p.Ad).ToList();
+            List<Pc> kopya; lock (pcKilit) kopya = pcler.OrderByDescending(p => p.Acik).ThenBy(p => p.Ad).ToList();
             izgara.SuspendLayout();
             foreach (var p in kopya)
             {
@@ -278,16 +276,19 @@ namespace Sem.Yonetici
                 {
                     k = new PcKart(p);
                     k.SecimDegisti += (s, e) => SecimGuncelle();
-                    k.ContextMenuStrip = DigerMenu();
+                    k.MouseUp += (s, e) => { if (e.Button == MouseButtons.Right) { var kk = (PcKart)s; if (!kk.Secili) kk.Secili = true; DigerMenu().ImlecteGoster(this); } };
                     kartlar[p.Ad] = k; izgara.Controls.Add(k);
                 }
                 k.Pc = p; k.Invalidate();
             }
             foreach (var ad in kartlar.Keys.ToList())
                 if (!kopya.Any(p => p.Ad.Equals(ad, StringComparison.OrdinalIgnoreCase))) { izgara.Controls.Remove(kartlar[ad]); kartlar[ad].Dispose(); kartlar.Remove(ad); }
-            // Sıralama: ada göre
+            // Sıralama: önce açık olanlar, sonra ada göre
             int i = 1;
             foreach (var p in kopya) izgara.Controls.SetChildIndex(kartlar[p.Ad], i++);
+            izgara.Controls.SetChildIndex(altBosluk, i);
+            foreach (var k in kartlar.Values) izgara.SetFlowBreak(k, false);
+            if (kopya.Count > 0) izgara.SetFlowBreak(kartlar[kopya[kopya.Count - 1].Ad], true); // boşluk kendi satırında dursun
             bosMesaj.Visible = kopya.Count == 0;
             izgara.ResumeLayout();
 
@@ -480,9 +481,48 @@ namespace Sem.Yonetici
             Uygula("Duvar kâğıdı", h, p => { var m = new Mesaj("DUVAR") { Veri = veri }; m["koru"] = "1"; return m; }, 30000);
         }
 
+        /// <summary>
+        /// Ana bilgisayarda kurulu Canon yazıcının sürücüsünü alır ve seçili bilgisayarlara aynı ad ve IP ile kurar.
+        /// Ana bilgisayarda yazıcı yoksa elle sürücü klasörü seçilen eski pencereye düşer.
+        /// </summary>
         void YaziciKur()
         {
             var h = Hedefler(); if (h == null) return;
+            Tost("Yazıcı sürücüsü bu bilgisayardan alınıyor…");
+            Task.Run(() =>
+            {
+                Mesaj paket = null; string hata = null;
+                try { paket = Baglanti.Gonder("127.0.0.1", new Mesaj("YAZICI_PAKET"), 120000); if (!paket.Tamam) hata = paket["aciklama"]; }
+                catch (Exception e) { hata = e.Message; }
+                BeginInvoke((Action)(() => Guvenli(() => YaziciKurDevam(h, paket, hata))));
+            });
+        }
+
+        void YaziciKurDevam(List<Pc> h, Mesaj paket, string hata)
+        {
+            tost.Visible = false;
+            if (hata != null || paket?.Veri == null)
+            {
+                if (!string.IsNullOrEmpty(hata)) Kaydet("Yazıcı sürücüsü alınamadı: " + hata, 2);
+                var secim = MK.Sor(this, "Sürücü alınamadı", "Bu bilgisayardaki Canon yazıcının sürücüsü okunamadı (ayrıntı Etkinlik sayfasında).\n\nCanon'un sitesinden indirdiğiniz sürücü klasörünü seçerek de kurabilirsiniz.", "Klasör seç");
+                if (secim == true) YaziciKurElle(h);
+                return;
+            }
+            string ad = paket["ad"], surucu = paket["surucu"], ip = paket["ip"];
+            if (string.IsNullOrWhiteSpace(ip))
+            {
+                ip = Diyalog.Metin(this, "Yazıcının IP adresi", "Yazıcının IP adresi okunamadı. Doğruysa devam edin; değilse yazıcının ekranında Menü → Ağ ayarları bölümünde yazar.", YaziciForm.VarsayilanIp, "Devam");
+                if (string.IsNullOrWhiteSpace(ip)) return;
+            }
+            var mb = paket.Veri.Length / (1024.0 * 1024.0);
+            if (MK.Sor(this, "Yazıcı kurulsun mu?", ad + "\nSürücü: " + surucu + "\nIP: " + ip + "  ·  " + mb.ToString("0.#") + " MB\n\n" +
+                h.Count + " bilgisayara bu bilgisayardaki sürücünün aynısı kurulacak.", "Kur") != true) return;
+            var veri = paket.Veri;
+            Uygula("Yazıcı kur", h, p => { var m = new Mesaj("YAZICI_KUR") { Veri = veri }; m["ip"] = ip; m["ad"] = ad; m["surucu"] = surucu; return m; }, 180000);
+        }
+
+        void YaziciKurElle(List<Pc> h)
+        {
             using (var f = new YaziciForm())
             {
                 if (f.ShowDialog(this) != DialogResult.OK) return;

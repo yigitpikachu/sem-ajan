@@ -203,7 +203,8 @@ namespace Sem.Yonetici
     {
         public Izgara()
         {
-            AutoScroll = true; BackColor = Renk.Zemin; WrapContents = true;
+            AutoScroll = false; HorizontalScroll.Maximum = 0; HorizontalScroll.Visible = false; VerticalScroll.Visible = false; AutoScroll = true; // yalnızca dikey kaydırma
+            BackColor = Renk.Zemin; WrapContents = true;
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
         }
     }

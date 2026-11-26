@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
@@ -122,7 +124,7 @@ namespace Sem.Arayuz
             Kutu = new TextBox
             {
                 BorderStyle = BorderStyle.None, Font = Tema.Yazi(cokSatir ? 11f : 10.5f), BackColor = Renk.Yuzey, ForeColor = Renk.Yazi,
-                UseSystemPasswordChar = sifre, Multiline = cokSatir, AcceptsReturn = cokSatir, ScrollBars = cokSatir ? ScrollBars.Vertical : ScrollBars.None
+                UseSystemPasswordChar = sifre, Multiline = cokSatir, AcceptsReturn = cokSatir, ScrollBars = ScrollBars.None
             };
             Controls.Add(Kutu);
             Height = cokSatir ? Tema.S(160) : Tema.S(42);
@@ -312,6 +314,29 @@ namespace Sem.Arayuz
             MouseDown += (s, e) => { if (e.Button == MouseButtons.Left && e.Y < Tema.S(60)) Tasi(); };
         }
 
+        /// <summary>true ise pencere içeriğe göre kısaltılmaz.</summary>
+        protected bool SabitBoyut;
+
+        /// <summary>İçerik ile alttaki düğmeler arasındaki fazla boşluğu kaldırır; pencere içeriği kadar olur.</summary>
+        protected override void OnLoad(EventArgs e)
+        {
+            if (!SabitBoyut)
+            {
+                int icerikAlt = 0, dugmeUst = int.MaxValue;
+                foreach (Control c in Icerik.Controls)
+                {
+                    if ((c.Anchor & AnchorStyles.Bottom) != 0 && (c.Anchor & AnchorStyles.Top) == 0) { dugmeUst = Math.Min(dugmeUst, c.Top); continue; }
+                    int alt = c.Bottom;
+                    if (c is Label l && !l.AutoSize && l.Text != "")
+                        using (var g = l.CreateGraphics()) alt = l.Top + Math.Min(l.Height, (int)Math.Ceiling(g.MeasureString(l.Text, l.Font, l.Width).Height) + Tema.S(4));
+                    icerikAlt = Math.Max(icerikAlt, alt);
+                }
+                int fazla = dugmeUst == int.MaxValue ? 0 : dugmeUst - icerikAlt - Tema.S(24);
+                if (fazla > 0) Height -= fazla;
+            }
+            base.OnLoad(e);
+        }
+
         protected void Tasi() { if (Environment.OSVersion.Platform == PlatformID.Win32NT) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } }
 
         protected override CreateParams CreateParams
@@ -359,46 +384,197 @@ namespace Sem.Arayuz
     }
 
     /// <summary>Menüleri (sağ tık, "Diğer") yuvarlak ve sade gösteren çizici.</summary>
-    public class MenuCizici : ToolStripProfessionalRenderer
+    /// <summary>Küçük, içerik kadar geniş açılır menü (Mac tarzı). Dışına tıklanınca kapanır.</summary>
+    public class AcilirMenu : Form
     {
-        public MenuCizici() : base(new Renkler()) { RoundedEdges = true; }
+        class Oge { public string Metin, Ikon; public Action Tik; public bool Tehlike, Ayrac; public Rectangle Alan; }
+        readonly List<Oge> ogeler = new List<Oge>();
+        readonly Font yazi = Tema.Yazi(9.5f);
+        int uzerinde = -1;
 
-        class Renkler : ProfessionalColorTable
+        public AcilirMenu()
         {
-            public override Color MenuItemSelected => Renk.Hover;
-            public override Color MenuItemBorder => Renk.Hover;
-            public override Color MenuBorder => Renk.CizgiKoyu;
-            public override Color ToolStripDropDownBackground => Renk.Yuzey;
-            public override Color ImageMarginGradientBegin => Renk.Yuzey;
-            public override Color ImageMarginGradientMiddle => Renk.Yuzey;
-            public override Color ImageMarginGradientEnd => Renk.Yuzey;
-            public override Color SeparatorDark => Renk.Cizgi;
-            public override Color SeparatorLight => Renk.Yuzey;
+            FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; StartPosition = FormStartPosition.Manual;
+            TopMost = true; BackColor = Renk.Yuzey; DoubleBuffered = true; KeyPreview = true;
+            Deactivate += (s, e) => Close();
+            KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
         }
 
-        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        protected override CreateParams CreateParams
         {
-            e.TextColor = e.Item.Enabled ? Renk.Yazi : Renk.Yazi3;
-            base.OnRenderItemText(e);
+            get { var c = base.CreateParams; c.ClassStyle |= 0x20000; /* CS_DROPSHADOW */ return c; }
         }
 
-        protected override void OnRenderItemImage(ToolStripItemImageRenderEventArgs e)
+        public AcilirMenu Ekle(string metin, string ikon, Action tik, bool tehlike = false)
+        { ogeler.Add(new Oge { Metin = metin, Ikon = ikon, Tik = tik, Tehlike = tehlike }); return this; }
+
+        public AcilirMenu Ayrac() { ogeler.Add(new Oge { Ayrac = true }); return this; }
+
+        void Yerlestir()
         {
-            if (e.Item.Tag is string ikon)
+            int pad = Tema.S(5), satir = Tema.S(30), ayrac = Tema.S(9), gen = 0;
+            using (var g = CreateGraphics())
+                foreach (var o in ogeler) if (!o.Ayrac) gen = Math.Max(gen, (int)Math.Ceiling(g.MeasureString(o.Metin, yazi).Width));
+            int w = gen + Tema.S(12 + 18 + 10 + 18), y = pad;
+            foreach (var o in ogeler) { int h = o.Ayrac ? ayrac : satir; o.Alan = new Rectangle(pad, y, w - 2 * pad, h); y += h; }
+            ClientSize = new Size(w, y + pad);
+            using (var yol = Tema.Yuvarlak(new RectangleF(0, 0, Width, Height), Tema.S(10))) Region = new Region(yol);
+        }
+
+        /// <summary>Menüyü bir kontrolün üstünde (yukari) ya da altında gösterir.</summary>
+        public void Goster(Control yanina, bool yukari)
+        {
+            Yerlestir();
+            var p = yanina.PointToScreen(Point.Empty);
+            var ekran = Screen.FromControl(yanina).WorkingArea;
+            int x = Math.Min(p.X + yanina.Width - Width, ekran.Right - Width);
+            int y = yukari ? p.Y - Height - Tema.S(6) : p.Y + yanina.Height + Tema.S(6);
+            Location = new Point(Math.Max(ekran.Left, x), Math.Max(ekran.Top, Math.Min(y, ekran.Bottom - Height)));
+            Show(yanina.FindForm());
+        }
+
+        /// <summary>Menüyü fare imlecinin olduğu yerde gösterir.</summary>
+        public void ImlecteGoster(Control sahip)
+        {
+            Yerlestir();
+            var p = Cursor.Position; var ekran = Screen.FromPoint(p).WorkingArea;
+            Location = new Point(Math.Min(p.X, ekran.Right - Width), Math.Min(p.Y, ekran.Bottom - Height));
+            Show(sahip.FindForm());
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            int i = ogeler.FindIndex(o => !o.Ayrac && o.Alan.Contains(e.Location));
+            if (i != uzerinde) { uzerinde = i; Cursor = i >= 0 ? Cursors.Hand : Cursors.Default; Invalidate(); }
+        }
+
+        protected override void OnMouseLeave(EventArgs e) { uzerinde = -1; Invalidate(); }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            var o = ogeler.FirstOrDefault(x => !x.Ayrac && x.Alan.Contains(e.Location));
+            if (o == null) return;
+            Close();
+            var sahip = Owner; // menü kapandıktan sonra çalışsın
+            if (sahip != null && sahip.IsHandleCreated) sahip.BeginInvoke(o.Tik); else o.Tik();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics; Tema.Kaliteli(g);
+            for (int i = 0; i < ogeler.Count; i++)
             {
-                Tema.Kaliteli(e.Graphics);
-                Tema.IkonCiz(e.Graphics, ikon, 11f, e.Item.ForeColor == Renk.Pembe ? Renk.Pembe : Renk.Yazi2, e.ImageRectangle);
+                var o = ogeler[i]; var r = o.Alan;
+                if (o.Ayrac) { using (var pen = new Pen(Renk.Cizgi)) g.DrawLine(pen, r.X + Tema.S(8), r.Y + r.Height / 2, r.Right - Tema.S(8), r.Y + r.Height / 2); continue; }
+                if (i == uzerinde)
+                    using (var yol = Tema.Yuvarlak(r, Tema.S(6))) using (var b = new SolidBrush(o.Tehlike ? Renk.Acik(Renk.Pembe, 22) : Renk.Hover)) g.FillPath(b, yol);
+                var renk = o.Tehlike ? Renk.Pembe : Renk.Yazi;
+                Tema.IkonCiz(g, o.Ikon, 10f, o.Tehlike ? Renk.Pembe : Renk.Yazi2, new RectangleF(r.X + Tema.S(7), r.Y, Tema.S(20), r.Height));
+                Tema.YaziCiz(g, o.Metin, yazi, renk, new RectangleF(r.X + Tema.S(35), r.Y, r.Width - Tema.S(40), r.Height));
             }
-            else base.OnRenderItemImage(e);
+            using (var pen = new Pen(Renk.CizgiKoyu)) using (var yol = Tema.Yuvarlak(new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f), Tema.S(10))) g.DrawPath(pen, yol);
+        }
+    }
+
+    /// <summary>
+    /// Windows'un kalın kaydırma çubuğu yerine ince, yuvarlak bir çubuk (Mac tarzı).
+    /// İçerik kontrolünün kendi çubuğu, kutunun dışına taşırılarak gizlenir; tekerlek ve dokunmatik kaydırma aynen çalışır.
+    /// </summary>
+    public class InceKaydirma : Control
+    {
+        readonly Func<int[]> oku;      // {değer, en çok, sayfa}
+        readonly Action<int> yaz;
+        readonly Control ic;
+        readonly Timer zaman = new Timer { Interval = 50 };
+        int sonDeger = -1; DateTime sonHareket = DateTime.MinValue;
+        bool uzerinde, surukle; int surukleFark; float opaklik;
+
+        InceKaydirma(Control ic, Func<int[]> oku, Action<int> yaz)
+        {
+            this.ic = ic; this.oku = oku; this.yaz = yaz;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            Width = Tema.S(12); Cursor = Cursors.Default;
+            zaman.Tick += (s, e) => Denetle(); zaman.Start();
+            Disposed += (s, e) => zaman.Dispose();
         }
 
-        /// <summary>İkonlu menü öğesi (ikon çizimi için yer tutucu boş resim kullanılır).</summary>
-        public static ToolStripMenuItem Oge(string metin, string ikon, EventHandler tik, bool tehlike = false)
+        /// <summary>Kaydırılabilir paneli (AutoScroll) ince çubuklu bir kutuya sarar; kutuyu döndürür.</summary>
+        public static Panel Sar(ScrollableControl ic) =>
+            Sar(ic, () => new[] { -ic.AutoScrollPosition.Y, ic.DisplayRectangle.Height, ic.ClientSize.Height }, v => ic.AutoScrollPosition = new Point(0, v));
+
+        /// <summary>Liste kutusunu ince çubuklu bir kutuya sarar.</summary>
+        public static Panel Sar(ListBox ic) =>
+            Sar(ic, () => new[] { ic.TopIndex * ic.ItemHeight, ic.Items.Count * ic.ItemHeight, ic.ClientSize.Height },
+                    v => { if (ic.Items.Count > 0) ic.TopIndex = Math.Max(0, Math.Min(ic.Items.Count - 1, (int)Math.Round(v / (double)ic.ItemHeight))); });
+
+        static Panel Sar(Control ic, Func<int[]> oku, Action<int> yaz)
         {
-            var bos = new Bitmap(Tema.S(18), Tema.S(18));
-            var o = new ToolStripMenuItem(metin, bos, tik) { Tag = ikon, Padding = Tema.Pd(4, 6, 4, 6), Font = Tema.Yazi(10f) };
-            if (tehlike) o.ForeColor = Renk.Pembe;
-            return o;
+            int sb = SystemInformation.VerticalScrollBarWidth;
+            var kutu = new Panel { Dock = ic.Dock, BackColor = ic.BackColor, Margin = ic.Margin };
+            ic.Dock = DockStyle.None;
+            var cubuk = new InceKaydirma(ic, oku, yaz) { BackColor = ic.BackColor };
+            kutu.Controls.Add(cubuk); kutu.Controls.Add(ic); cubuk.BringToFront();
+            kutu.Resize += (s, e) =>
+            {
+                ic.SetBounds(0, 0, kutu.ClientSize.Width + sb, kutu.ClientSize.Height);
+                cubuk.SetBounds(kutu.ClientSize.Width - cubuk.Width, 0, cubuk.Width, kutu.ClientSize.Height);
+            };
+            if (ic is ScrollableControl sc) sc.Padding = new Padding(sc.Padding.Left, sc.Padding.Top, sc.Padding.Right + sb, sc.Padding.Bottom);
+            return kutu;
+        }
+
+        void Denetle()
+        {
+            if (!ic.IsHandleCreated || !Visible && !ic.Visible) return;
+            var d = oku(); bool gerek = d[1] > d[2] + 1;
+            if (d[0] != sonDeger) { if (sonDeger >= 0) sonHareket = DateTime.Now; sonDeger = d[0]; Invalidate(); }
+            float hedef = !gerek ? 0f : (uzerinde || surukle) ? 1f : (DateTime.Now - sonHareket).TotalMilliseconds < 1200 ? 0.8f : 0.3f;
+            if (Math.Abs(hedef - opaklik) > 0.01f) { opaklik += (hedef - opaklik) * 0.35f; Invalidate(); }
+        }
+
+        Rectangle Basparmak(int[] d)
+        {
+            int h = Height - Tema.S(8);
+            if (d[1] <= d[2]) return Rectangle.Empty;
+            int bh = Math.Max(Tema.S(36), (int)(h * (double)d[2] / d[1]));
+            int y = Tema.S(4) + (int)((h - bh) * (double)d[0] / Math.Max(1, d[1] - d[2]));
+            int w = uzerinde || surukle ? Tema.S(8) : Tema.S(5);
+            return new Rectangle(Width - w - Tema.S(2), y, w, bh);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            using (var b = new SolidBrush(BackColor)) e.Graphics.FillRectangle(b, ClientRectangle);
+            if (opaklik < 0.02f) return;
+            var r = Basparmak(oku()); if (r.IsEmpty) return;
+            Tema.Kaliteli(e.Graphics);
+            using (var yol = Tema.Yuvarlak(r, r.Width / 2f))
+            using (var b = new SolidBrush(Color.FromArgb((int)(opaklik * (uzerinde || surukle ? 150 : 110)), Renk.Yazi))) e.Graphics.FillPath(b, yol);
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { uzerinde = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { uzerinde = false; Invalidate(); base.OnMouseLeave(e); }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            var d = oku(); var r = Basparmak(d); if (r.IsEmpty) return;
+            if (e.Y >= r.Top && e.Y <= r.Bottom) { surukle = true; surukleFark = e.Y - r.Top; Capture = true; }
+            else yaz(Math.Max(0, Math.Min(d[1] - d[2], d[0] + (e.Y < r.Top ? -d[2] : d[2]))));
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            if (!surukle) return;
+            var d = oku(); var r = Basparmak(d); int h = Height - Tema.S(8) - r.Height;
+            double oran = Math.Max(0, Math.Min(1, (e.Y - surukleFark - Tema.S(4)) / (double)Math.Max(1, h)));
+            yaz((int)(oran * (d[1] - d[2])));
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e) { surukle = false; Capture = false; Invalidate(); }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            var d = oku(); yaz(Math.Max(0, Math.Min(d[1] - d[2], d[0] - e.Delta)));
         }
     }
 }

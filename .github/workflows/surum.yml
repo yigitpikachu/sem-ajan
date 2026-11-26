@@ -1,13 +1,20 @@
-# Yeni bir "v1.2.3" etiketi gönderildiğinde Sem.exe'yi derler ve GitHub Release olarak yayınlar.
+# Sürüm yayınlama: src/Sem/Sem.csproj içindeki <Version> değeri için henüz sürüm yoksa
+# Sem.exe derlenir ve GitHub Release olarak yayınlanır. Elle "v1.2.3" etiketi göndermek de aynı işi yapar.
 # Bilgisayarlardaki Sem Ajan yalnızca bu iş akışının yüklediği Sem.exe'yi kabul eder.
 name: Sürüm yayınla
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: surum
+  cancel-in-progress: false
 
 jobs:
   yayinla:
@@ -15,24 +22,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sürümü belirle
+        id: surum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SURUM=$(grep -oP '(?<=<Version>)[^<]+' src/Sem/Sem.csproj)
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then SURUM="${GITHUB_REF_NAME#v}"; fi
+          echo "surum=$SURUM" >> "$GITHUB_OUTPUT"
+          if gh release view "v$SURUM" >/dev/null 2>&1; then
+            echo "v$SURUM zaten yayınlanmış, atlanıyor."
+            echo "yayinla=hayir" >> "$GITHUB_OUTPUT"
+          else
+            echo "yayinla=evet" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-dotnet@v4
+        if: steps.surum.outputs.yayinla == 'evet'
         with:
           dotnet-version: '8.0.x'
 
       - name: Derle
+        if: steps.surum.outputs.yayinla == 'evet'
         run: |
-          SURUM="${GITHUB_REF_NAME#v}"
-          dotnet build src/Sem/Sem.csproj -c Release -p:Version="$SURUM"
+          dotnet build src/Sem/Sem.csproj -c Release -p:Version="${{ steps.surum.outputs.surum }}"
           cp src/Sem/bin/Release/net48/Sem.exe Sem.exe
           sha256sum Sem.exe
 
       - name: Yayınla
+        if: steps.surum.outputs.yayinla == 'evet'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOT="docs/surum-notlari/${GITHUB_REF_NAME}.md"
-          if [ -f "$NOT" ]; then
-            gh release create "$GITHUB_REF_NAME" Sem.exe --title "Sem Ajan ${GITHUB_REF_NAME}" --notes-file "$NOT"
-          else
-            gh release create "$GITHUB_REF_NAME" Sem.exe --title "Sem Ajan ${GITHUB_REF_NAME}" --generate-notes
-          fi
+          ETIKET="v${{ steps.surum.outputs.surum }}"
+          NOT="docs/surum-notlari/${ETIKET}.md"
+          if [ -f "$NOT" ]; then ARG=(--notes-file "$NOT"); else ARG=(--generate-notes); fi
+          gh release create "$ETIKET" Sem.exe --target "$GITHUB_SHA" --title "Sem Ajan ${ETIKET}" "${ARG[@]}"

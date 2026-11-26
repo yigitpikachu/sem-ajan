@@ -29,5 +29,4 @@ En son sürüm: [Releases](../../releases/latest) sayfasından **Sem.exe**.
 ## Yeni sürüm yayınlama
 
 1. `src/Sem/Sem.csproj` içindeki `<Version>` değerini artırın, `docs/surum-notlari/vX.Y.Z.md` dosyasına notları yazın.
-2. `git tag vX.Y.Z && git push origin vX.Y.Z`
-3. GitHub Actions derler ve Release'i yayınlar. Bilgisayarlar birkaç saat içinde kendiliğinden güncellenir ya da Sem Ajan → Güncellemeler'den hemen dağıtılabilir.
+2. `main` dalına gönderin. Bu sürüm daha önce yayınlanmadıysa GitHub Actions derler ve Release'i yayınlar. Bilgisayarlar birkaç saat içinde kendiliğinden güncellenir ya da Sem Ajan → Güncellemeler'den hemen dağıtılabilir.
