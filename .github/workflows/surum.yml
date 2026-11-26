@@ -29,12 +29,8 @@ jobs:
         env:
           SEM_IMZA_ANAHTARI: ${{ secrets.SEM_IMZA_ANAHTARI }}
         run: |
-          if [ -z "$SEM_IMZA_ANAHTARI" ]; then echo "SEM_IMZA_ANAHTARI gizli değeri tanımlı değil" >&2; exit 1; fi
-          umask 077
-          printf '%s\n' "$SEM_IMZA_ANAHTARI" > imza.pem
-          openssl dgst -sha256 -sign imza.pem -out imza.bin Sem.exe
-          base64 -w0 imza.bin > Sem.exe.sig
-          rm -f imza.pem imza.bin
+          pip install --quiet cryptography
+          python3 tools/imzala.py Sem.exe Sem.exe.sig
           sha256sum Sem.exe
 
       - name: Yayınla
@@ -43,7 +39,7 @@ jobs:
         run: |
           NOT="docs/surum-notlari/${GITHUB_REF_NAME}.md"
           if [ -f "$NOT" ]; then
-            gh release create "$GITHUB_REF_NAME" Sem.exe Sem.exe.sig --title "Sem ${GITHUB_REF_NAME}" --notes-file "$NOT"
+            gh release create "$GITHUB_REF_NAME" Sem.exe Sem.exe.sig --title "Sem Ajan ${GITHUB_REF_NAME}" --notes-file "$NOT"
           else
-            gh release create "$GITHUB_REF_NAME" Sem.exe Sem.exe.sig --title "Sem ${GITHUB_REF_NAME}" --generate-notes
+            gh release create "$GITHUB_REF_NAME" Sem.exe Sem.exe.sig --title "Sem Ajan ${GITHUB_REF_NAME}" --generate-notes
           fi

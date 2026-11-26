@@ -26,6 +26,10 @@ En son sürüm: [Releases](../../releases/latest) sayfasından **Sem.exe**.
 - Sürümler `v*` etiketiyle GitHub Actions tarafından derlenir ve RSA-3072 ile imzalanır (`.github/workflows/surum.yml`). Programlar yalnızca bu imzayı taşıyan güncellemeleri kurar.
 - İkonlar: [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) (MIT)
 
+## İmza anahtarı (bir kez)
+
+Yönetici bilgisayarında PowerShell'de `tools/anahtar-olustur.ps1` çalıştırılır. Gizli anahtar panoya kopyalanır ve depoda **Settings → Secrets and variables → Actions** altında `SEM_IMZA_ANAHTARI` adıyla kaydedilir; hiçbir dosyaya yazılmaz. Masaüstüne düşen açık anahtar `src/Sem/Guncelleme.cs` içindeki `AcikAnahtar` değerine konur.
+
 ## Yeni sürüm yayınlama
 
 1. `src/Sem/Sem.csproj` içindeki `<Version>` değerini artırın, `docs/surum-notlari/vX.Y.Z.md` dosyasına notları yazın.
