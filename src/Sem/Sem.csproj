@@ -10,7 +10,7 @@
     <Product>Sem Ajan</Product>
     <Company>Sem Özel Eğitim ve Rehabilitasyon Merkezi</Company>
     <AssemblyTitle>Sem Bilgisayar Yönetimi</AssemblyTitle>
-    <Version>1.4.1</Version>
+    <Version>1.5.0</Version>
     
     
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
@@ -29,6 +29,7 @@
     <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Management" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\assets\logo.png" LogicalName="logo.png" />

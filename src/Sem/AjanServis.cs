@@ -105,6 +105,8 @@ namespace Sem.Ajan
             try { SabahKontrol(); } catch (Exception e) { Gunluk.Yaz("Sabah: " + e.Message); }
             try { paylasim?.OrtakKontrol(); } catch (Exception e) { Gunluk.Yaz("Ortak: " + e.Message); }
             try { KilitTasarimi(); } catch { }
+            lock (kilit) if (uzakSon != DateTime.MinValue && (DateTime.Now - uzakSon).TotalSeconds > 8) { uzakSon = DateTime.MinValue; EkranaGonder("UZAK", "0"); }
+            Saglik.Denetle();
         }
 
         // ---------------------------------------------------------------- Sabah açılma
@@ -434,7 +436,40 @@ namespace Sem.Ajan
                 case "DUYURU":
                     return EkranaGonder("DUYURU", m["metin"], m["baslik"], m["id"]) ? Mesaj.Basari("Duyuru ekrana geldi") : Mesaj.Hata("Ekranda açık oturum yok");
 
-                case "EKRAN_RESMI": return EkranResmi(m["genislik"]);
+                case "EKRAN_RESMI":
+                    if (!ayar.EkranIzni) return Mesaj.Hata("Ekran görme kapalı");
+                    return EkranResmi(m["genislik"], "72", false);
+
+                case "UZAK_KARE":
+                {
+                    if (!ayar.EkranIzni) return Mesaj.Hata("Ekran görme kapalı");
+                    bool yeni; lock (kilit) { yeni = uzakSon == DateTime.MinValue; uzakSon = DateTime.Now; }
+                    if (yeni) EkranaGonder("UZAK", "1");
+                    return EkranResmi(m["genislik"], m["kalite"] != "" ? m["kalite"] : "60", true);
+                }
+
+                case "UZAK_GIRDI":
+                    if (!ayar.EkranIzni) return Mesaj.Hata("Ekran görme kapalı");
+                    lock (kilit) uzakSon = DateTime.Now;
+                    return EkranaGonder("GIRDI", m["olaylar"]) ? Mesaj.Basari() : Mesaj.Hata("Ekranda açık oturum yok");
+
+                case "UZAK_BITTI":
+                    lock (kilit) uzakSon = DateTime.MinValue;
+                    EkranaGonder("UZAK", "0");
+                    return Mesaj.Basari();
+
+                case "ENVANTER": return Envanter.Topla();
+
+                case "PROGRAM_DURUM": return Programlar.Durum(m["adlar"]);
+
+                case "PROGRAM_WINGET":
+                {
+                    var id = m["id"]; var ad = m["ad"]; var islem = m["islem"] == "guncelle" ? "upgrade" : "install";
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(id, @"^[A-Za-z0-9.\-_+]+$")) return Mesaj.Hata("Geçersiz paket");
+                    if (Programlar.Winget() == null) return Mesaj.Hata("Bu bilgisayarda winget (Uygulama Yükleyicisi) yok");
+                    Arkaplan((islem == "upgrade" ? "Güncelleme: " : "Kurulum: ") + ad, () => Programlar.WingetCalistir(islem, id));
+                    return Mesaj.Basari((islem == "upgrade" ? "Güncelleme" : "Kurulum") + " başladı, sonucu Etkinlik sayfasında görünecek");
+                }
 
                 case "SABAH_PLANI":
                     lock (kilit)
@@ -489,6 +524,7 @@ namespace Sem.Ajan
                         if (m.Alan.ContainsKey("oto_guncelle")) ayar.OtoGuncelle = m["oto_guncelle"] == "1";
                         if (m.Alan.ContainsKey("paylasim")) ayar.Paylasim = m["paylasim"] == "1";
                         if (m.Alan.ContainsKey("telefon")) ayar.Telefon = m["telefon"] == "1";
+                        if (m.Alan.ContainsKey("ekran_izni")) ayar.EkranIzni = m["ekran_izni"] == "1";
                         ayar.Yaz(); uyariGosterildi = false;
                     }
                     EkranaGonder("UYARI_KAPAT");
@@ -516,6 +552,13 @@ namespace Sem.Ajan
                 case "DOSYA_GONDER":
                 {
                     if (string.IsNullOrWhiteSpace(Path.GetFileName(m["ad"]))) return Mesaj.Hata("Dosya adı yok");
+                    if (m["klasor"] != "")
+                    {
+                        if (!Directory.Exists(m["klasor"])) return Mesaj.Hata("Klasör bulunamadı");
+                        var yer = Klasorler.Benzersiz(m["klasor"], Path.GetFileName(m["ad"]));
+                        File.WriteAllBytes(yer, m.Veri);
+                        return Mesaj.Basari(Path.GetFileName(yer) + " kondu");
+                    }
                     var klasor = Klasorler.Gelen("Yönetici");
                     var hedef = Klasorler.Benzersiz(klasor, m["ad"]);
                     File.WriteAllBytes(hedef, m.Veri);
@@ -619,20 +662,24 @@ namespace Sem.Ajan
             r["sabah_saat"] = ayar.SabahSaat; r["sabah_gunler"] = ayar.SabahGunler;
             r["gorunen"] = ayar.GorunenAd; r["grup"] = ayar.Grup; r["simge"] = ayar.Simge;
             r["duvar_kip"] = ayar.DuvarKip;
+            r["ekran_izni"] = ayar.EkranIzni ? "1" : "0";
+            r["saglik"] = Saglik.Ozet();
             r["paylasim"] = ayar.Paylasim ? "1" : "0"; r["telefon"] = ayar.Telefon ? "1" : "0"; r["yonetici"] = ayar.Yonetici ? "1" : "0";
             lock (okunan) r["okunan"] = string.Join(";", okunan.Skip(Math.Max(0, okunan.Count - 50)));
             return r;
         }
 
         /// <summary>Ekran tarafından ekranın küçük bir JPEG görüntüsünü ister.</summary>
-        Mesaj EkranResmi(string genislik)
+        DateTime uzakSon = DateTime.MinValue;
+
+        Mesaj EkranResmi(string genislik, string kalite, bool imlec)
         {
             var id = Guid.NewGuid().ToString("N");
             var b = new BekleyenResim();
             lock (bekleyenResim) bekleyenResim[id] = b;
             try
             {
-                if (!EkranaGonder("RESIM", id, genislik)) return Mesaj.Hata("Ekranda açık oturum yok");
+                if (!EkranaGonder("RESIM", id, genislik, kalite, imlec ? "1" : "0")) return Mesaj.Hata("Ekranda açık oturum yok");
                 if (!b.Olay.Wait(6000)) return Mesaj.Hata("Ekran cevap vermedi");
                 if (b.Veri == "") return Mesaj.Hata(b.Hata != "" ? b.Hata : "Ekran görüntüsü alınamadı");
                 var r = Mesaj.Basari(); r.Veri = Convert.FromBase64String(b.Veri);

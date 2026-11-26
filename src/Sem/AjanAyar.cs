@@ -43,6 +43,7 @@ namespace Sem.Ajan
         public string GorunenAd = "", Grup = "", Simge = ""; // yönetim ekranında verilen ad (paylaşımda görünür)
         public bool Paylasim = true;        // bilgisayarlar arası ve telefon paylaşımı
         public bool Telefon = true;         // LocalSend ile telefonlardan dosya kabul et
+        public bool EkranIzni = true;       // yönetici ekranı görebilir / uzaktan kontrol edebilir
         public string Parmakizi = "";       // LocalSend cihaz kimliği
         public string YaziciIzinli = "";    // "her zaman izin ver" denen telefonlar (parmak izi;...)
         public bool LocalSendKaldirildi;
@@ -81,6 +82,7 @@ namespace Sem.Ajan
             if (d.TryGetValue("simge", out v)) a.Simge = v;
             if (d.TryGetValue("paylasim", out v)) a.Paylasim = v != "0";
             if (d.TryGetValue("telefon", out v)) a.Telefon = v != "0";
+            if (d.TryGetValue("ekran_izni", out v)) a.EkranIzni = v != "0";
             if (d.TryGetValue("parmakizi", out v)) a.Parmakizi = v;
             if (d.TryGetValue("yazici_izinli", out v)) a.YaziciIzinli = v;
             if (d.TryGetValue("localsend_kaldirildi", out v)) a.LocalSendKaldirildi = v == "1";
@@ -113,6 +115,7 @@ namespace Sem.Ajan
             sb.AppendLine("simge=" + Tek(Simge));
             sb.AppendLine("paylasim=" + (Paylasim ? "1" : "0"));
             sb.AppendLine("telefon=" + (Telefon ? "1" : "0"));
+            sb.AppendLine("ekran_izni=" + (EkranIzni ? "1" : "0"));
             sb.AppendLine("parmakizi=" + Parmakizi);
             sb.AppendLine("yazici_izinli=" + YaziciIzinli);
             sb.AppendLine("localsend_kaldirildi=" + (LocalSendKaldirildi ? "1" : "0"));

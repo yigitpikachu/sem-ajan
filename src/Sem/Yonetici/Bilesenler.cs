@@ -89,6 +89,7 @@ namespace Sem.Yonetici
 
         string AltYazi()
         {
+            if (Pc.Acik && Saglik != "") return Saglik;
             var l = new List<string>();
             if (Pc.GorunenAd != "") l.Add(Pc.Ad);
             l.Add(Pc.Ip);
@@ -126,7 +127,22 @@ namespace Sem.Yonetici
             float aw = Math.Min(w - Tema.S(14), g.MeasureString(ad, f).Width);
             Tema.YaziCiz(g, ad, f, Pc.Acik ? Renk.Yazi : Renk.Yazi2, new RectangleF(x, y, aw + Tema.S(4), h));
             using (var b = new SolidBrush(DurumRenk)) g.FillEllipse(b, x + aw + Tema.S(6), y + h / 2 - Tema.S(3.5f), Tema.S(7), Tema.S(7));
+            if (Pc.Acik && Saglik != "") Tema.IkonCiz(g, Ik.Uyari, 9.5f, Renk.Turuncu, new RectangleF(x + aw + Tema.S(15), y, Tema.S(18), h));
         }
+
+        /// <summary>Sağlık uyarısı varsa ilkinin metni (disk dolu, disk arızası).</summary>
+        string Saglik
+        {
+            get
+            {
+                var s = Pc.SonDurum?["saglik"] ?? "";
+                if (s == "") return "";
+                var ilk = s.Split(';')[0]; var i = ilk.IndexOf('|');
+                return i >= 0 ? ilk.Substring(i + 1) : ilk;
+            }
+        }
+
+        Color AltRenk => Pc.Acik && Saglik != "" ? Renk.Turuncu : Renk.Yazi3;
 
         void KartCiz(Graphics g)
         {
@@ -180,7 +196,7 @@ namespace Sem.Yonetici
             float x = r.X + Tema.S(12);
             Tema.IkonCiz(g, p.Ikon, 11f, p.Acik ? Renk.Yazi2 : Renk.Yazi3, new RectangleF(x - Tema.S(3), y0, Tema.S(22), Tema.S(22)));
             AdCiz(g, Tema.YaziKalin(10f), x + Tema.S(22), y0, r.Right - x - Tema.S(22) - Tema.S(onizleme ? 12 : 44), Tema.S(22));
-            Tema.YaziCiz(g, AltYazi(), Tema.Yazi(8.25f), Renk.Yazi3, new RectangleF(x + Tema.S(22), y0 + Tema.S(20), r.Right - x - Tema.S(36), Tema.S(17)));
+            Tema.YaziCiz(g, AltYazi(), Tema.Yazi(8.25f), AltRenk, new RectangleF(x + Tema.S(22), y0 + Tema.S(20), r.Right - x - Tema.S(36), Tema.S(17)));
 
             float y2 = y0 + Tema.S(42), yarim = (r.Width - Tema.S(28)) / 2f;
             var kucuk = Tema.Yazi(8.25f);
@@ -204,7 +220,7 @@ namespace Sem.Yonetici
             Tema.IkonCiz(g, p.Ikon, 12f, p.Acik ? Renk.Yazi2 : Renk.Yazi3, new RectangleF(Tema.S(44), r.Y, Tema.S(26), r.Height));
             float adG = Math.Min(Tema.S(250), Width * 0.28f);
             AdCiz(g, Tema.YaziKalin(10.5f), Tema.S(78), r.Y + Tema.S(7), adG, Tema.S(22));
-            Tema.YaziCiz(g, AltYazi(), Tema.Yazi(8.5f), Renk.Yazi3, new RectangleF(Tema.S(78), r.Y + Tema.S(28), adG, Tema.S(18)));
+            Tema.YaziCiz(g, AltYazi(), Tema.Yazi(8.5f), AltRenk, new RectangleF(Tema.S(78), r.Y + Tema.S(28), adG, Tema.S(18)));
 
             float x = Tema.S(78) + adG + Tema.S(20), kalan = Width - x - Tema.S(16);
             var f = Tema.Yazi(9f);

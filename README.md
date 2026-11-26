@@ -11,13 +11,15 @@ Sem Özel Eğitim ve Rehabilitasyon Merkezi'ndeki bilgisayarları tek yerden yö
 - Bilgisayarlara ad ve simge verme, oda gruplarına ayırma (Sınıflar, Terapi odaları, Ofis), kart ya da liste görünümü
 - Kilitleme, kapatma ve yeniden başlatma (basılı tutarak onay, ekranda 1 dakikalık geri sayım), ağdan açma (Wake-on-LAN)
 - Sabah belirlenen saatte bilgisayarları ağdan açma
+- Uzaktan kontrol (ekranı görme, fare ve klavye); Ayarlar'dan tek anahtarla tüm bilgisayarlarda kapatılabilir
+- Sağlık uyarıları (disk dolu, disk arızası) ve Bilgiler penceresi: Windows, lisans, donanım, diskler, kurulu programlar
 
 **Kapanma**
 - Gün gün ayarlanabilen otomatik kapanma, önceden geri sayımlı uyarı, sınırlı erteleme, yönetici şifresiyle o gün için iptal
 
 **Duyuru ve dosya**
 - Ekranın ortasında duyuru; kimin "Tamam"a bastığı Duyurular sayfasında görünür
-- Dosya gönderme ve bilgisayardan dosya alma; gelenler masaüstündeki "Sem Dosyalar\Gelen" klasörüne düşer
+- Dosya gönderme ve bilgisayarın klasörlerinde gezerek dosya alma/gönderme; gelenler masaüstündeki "Sem Dosyalar\Gelen" klasörüne düşer
 
 **Sem Paylaş**
 - Bilgisayarlar arasında ve telefonlarla dosya ve yazı paylaşımı (telefonda LocalSend uygulamasıyla, aynı Wi-Fi'de)
@@ -29,7 +31,8 @@ Sem Özel Eğitim ve Rehabilitasyon Merkezi'ndeki bilgisayarları tek yerden yö
 
 **Bakım**
 - Kurumsal, mevsimlik ve özel günlere göre kendiliğinden değişen duvar kâğıdı ve kilit ekranı, istenirse oda adıyla (değiştirilirse geri gelir)
-- Yazıcı kurma (yönetici bilgisayarındaki Canon sürücüsü diğerlerine aynen kurulur) ve yazıcı onarma, sessiz program kurma
+- Yazıcı kurma (yönetici bilgisayarındaki Canon sürücüsü diğerlerine aynen kurulur) ve yazıcı onarma
+- Program kurma ve güncelleme: hazır listeden winget ile (kurulu olanlar önceden gösterilir) ya da dosyadan sessiz kurulum
 - GitHub üzerinden doğrulamalı otomatik güncelleme
 
 Yönetici bilgisayarında program saatin yanında da çalışır: tek tıkla duyuru, "bugün kapanmasın", hepsini kilitle.

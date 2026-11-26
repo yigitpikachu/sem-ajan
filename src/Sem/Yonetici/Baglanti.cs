@@ -21,7 +21,7 @@ namespace Sem.Yonetici
         public string Hata = "";
         public Mesaj SonDurum;
         public DateTime SonGorulme = DateTime.MinValue;
-        public string SonIslem = "";
+        public string SonIslem = "", SonSaglik = "";
 
         // Ekran önizlemesi
         public Image Onizleme;

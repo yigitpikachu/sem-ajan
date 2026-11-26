@@ -263,9 +263,37 @@ namespace Sem.Yonetici
         readonly Pc pc;
         readonly Label yol, durum;
         readonly DosyaListesi l;
+        readonly Buton gonder;
         string mevcut = "";
 
-        public DosyaTarayici(Pc pc) : base("Dosya al  ·  " + pc.Ad, 720, 560)
+        void Yukle(string[] dosyalar)
+        {
+            if (mevcut == "") { durum.Text = "Önce bir klasör açın."; return; }
+            var hedef = mevcut;
+            var liste = dosyalar.Where(File.Exists).ToList();
+            if (liste.Count == 0) { durum.Text = "Klasör gönderilemez, dosya seçin."; return; }
+            durum.Text = "Gönderiliyor…"; UseWaitCursor = true;
+            Task.Run(() =>
+            {
+                int ok = 0; string hata = "";
+                foreach (var f in liste)
+                {
+                    try
+                    {
+                        if (new FileInfo(f).Length > 400L * 1024 * 1024) { hata = Path.GetFileName(f) + " çok büyük"; continue; }
+                        var m = new Mesaj("DOSYA_GONDER") { Veri = File.ReadAllBytes(f) }; m["ad"] = Path.GetFileName(f); m["klasor"] = hedef;
+                        var c = Baglanti.Gonder(pc.Ip, m, 180000);
+                        if (c.Tamam) ok++; else hata = c["aciklama"];
+                    }
+                    catch (Exception e) { hata = e.Message; }
+                }
+                BeginInvoke((Action)(() => { UseWaitCursor = false; Git(hedef); durumSonra = "✓ " + ok + " dosya gönderildi" + (hata != "" ? "  ·  Hata: " + hata : ""); }));
+            });
+        }
+
+        string durumSonra = "";
+
+        public DosyaTarayici(Pc pc) : base("Dosyalar  ·  " + pc.Baslik, 720, 560)
         {
             this.pc = pc;
             int g = Icerik.Width;
@@ -278,7 +306,18 @@ namespace Sem.Yonetici
             durum = Yazi.Etiket("", 9.5f, false, Renk.Yazi2, false); durum.SetBounds(0, Icerik.Height - Tema.S(40), g - Tema.S(200), Tema.S(40)); durum.TextAlign = ContentAlignment.MiddleLeft;
             var indir = new Buton("Seçilenleri indir", Ik.Indir, ButonTuru.Birincil);
             indir.Location = new Point(g - indir.Width, Icerik.Height - indir.Height);
-            Icerik.Controls.AddRange(new Control[] { geri, bas, yol, kart, durum, indir });
+            gonder = new Buton("Buraya gönder", Ik.Yukle, ButonTuru.Ikincil) { Enabled = false };
+            gonder.Location = new Point(indir.Left - gonder.Width - Tema.S(8), indir.Top);
+            durum.Width = gonder.Left - Tema.S(8);
+            Icerik.Controls.AddRange(new Control[] { geri, bas, yol, kart, durum, indir, gonder });
+            gonder.Click += (s, e) =>
+            {
+                using (var o = new OpenFileDialog { Multiselect = true, Title = "Bu klasöre gönderilecek dosyaları seçin" })
+                    if (o.ShowDialog(this) == DialogResult.OK) Yukle(o.FileNames);
+            };
+            l.AllowDrop = true;
+            l.DragEnter += (s, e) => e.Effect = mevcut != "" && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+            l.DragDrop += (s, e) => { if (e.Data.GetData(DataFormats.FileDrop) is string[] f) Yukle(f); };
 
             geri.Click += (s, e) => { var p = mevcut == "" ? null : Path.GetDirectoryName(mevcut.TrimEnd('\\')); Git(string.IsNullOrEmpty(p) || mevcut.TrimEnd('\\').Length <= 2 ? "" : p); };
             bas.Click += (s, e) => Git("");
@@ -318,7 +357,9 @@ namespace Sem.Yonetici
                             });
                         }
                         l.EndUpdate();
-                        durum.Text = l.Items.Count + " öğe";
+                        gonder.Enabled = p != "";
+                        durum.Text = durumSonra != "" ? durumSonra : l.Items.Count + " öğe" + (p != "" ? "  ·  dosyaları buraya sürükleyebilirsiniz" : "");
+                        durumSonra = "";
                     }));
                 }
                 catch (Exception e) { BeginInvoke((Action)(() => { UseWaitCursor = false; durum.Text = "Hata: " + e.Message; })); }
@@ -619,7 +660,7 @@ namespace Sem.Yonetici
         readonly Buton[] gunler = new Buton[7];
         readonly Label sabahNot;
 
-        public AyarlarForm(YonetimAyar mevcut, string sabahSaat, string sabahGunler, bool paylasimAcik = true, bool telefonAcik = true) : base("Ayarlar", 520, 900)
+        public AyarlarForm(YonetimAyar mevcut, string sabahSaat, string sabahGunler, bool paylasimAcik = true, bool telefonAcik = true) : base("Ayarlar", 520, 860)
         {
             int g = Icerik.Width;
             Ayar = mevcut;
@@ -631,16 +672,16 @@ namespace Sem.Yonetici
                 var a = new Anahtar(metin) { Location = new Point(0, y), Width = g, Acik = acik };
                 Icerik.Controls.Add(a); y += Tema.S(36); return a;
             };
-            onizleme = ekle("Kartlarda canlı ekran önizlemesi", mevcut.Onizleme);
+            onizleme = ekle("Ekran görme ve uzaktan kontrol", mevcut.Onizleme);
             dosya = ekle("Dosya gönder ve al", mevcut.Dosya);
             yazici = ekle("Yazıcı kur ve onar", mevcut.Yazici);
             program = ekle("Program kur", mevcut.Program);
             duvar = ekle("Duvar kâğıdı", mevcut.Duvar);
             duyuru = ekle("Duyuru geçmişi (kim okudu)", mevcut.Duyurular);
-            var not = Yazi.Etiket("Kapatılan özellikler menülerden kalkar.", 9f, false, Renk.Yazi3); not.Location = new Point(0, y + Tema.S(2));
+            var not = Yazi.Etiket("Kapatılan özellikler menülerden kalkar. Ekran görme kapanınca bilgisayarlar da ekran isteğini reddeder.", 9f, false, Renk.Yazi3, false); not.SetBounds(0, y + Tema.S(2), g, Tema.S(36));
             Icerik.Controls.Add(not);
 
-            y += Tema.S(40);
+            y += Tema.S(52);
             var ust2 = Yazi.UstBaslik("Sabah otomatik açılma", Renk.Yazi3); ust2.Location = new Point(0, y);
             Icerik.Controls.Add(ust2);
             y += Tema.S(24);
@@ -662,15 +703,14 @@ namespace Sem.Yonetici
                 gx += b.Width + Tema.S(4);
             }
             y += Tema.S(48);
-            sabahNot = Yazi.Etiket("Bu saatte açık olan Sem bilgisayarı (genelde yönetici bilgisayarı) diğerlerine ağdan açılma sinyali gönderir. " +
-                "Yönetici bilgisayarı gece kapatılmamalı. Bilgisayarların BIOS ayarında \"Wake on LAN\" açık olmalı; denemek için kapalı bir bilgisayarda Diğer → Uyandır'ı kullanın.",
+            sabahNot = Yazi.Etiket("Bu saatte yönetici bilgisayarı diğerlerine ağdan açılma sinyali gönderir, bu yüzden gece kapatılmamalı. BIOS'ta \"Wake on LAN\" açık olmalı.",
                 9f, false, Renk.Yazi2, false);
-            sabahNot.SetBounds(0, y, g, Tema.S(68));
+            sabahNot.SetBounds(0, y, g, Tema.S(40));
             Icerik.Controls.Add(sabahNot);
             sabah.Degisti += (s, e) => SabahEtkin();
             SabahEtkin();
 
-            y += Tema.S(80);
+            y += Tema.S(52);
             var ust3 = Yazi.UstBaslik("Paylaşım", Renk.Yazi3); ust3.Location = new Point(0, y);
             Icerik.Controls.Add(ust3);
             y += Tema.S(24);

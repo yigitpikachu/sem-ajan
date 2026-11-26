@@ -88,6 +88,7 @@ namespace Sem.Ajan
                         {
                             var parca = EkranHatti.Coz(satir);
                             if (parca[0] == "RESIM") { ThreadPool.QueueUserWorkItem(_ => ResimGonder(parca)); continue; }
+                            if (parca[0] == "GIRDI") { if (parca.Length > 1) Girdi.Uygula(parca[1]); continue; }
                             gizli.BeginInvoke((Action)(() => { try { Isle(parca); } catch { } }));
                         }
                     }
@@ -118,6 +119,9 @@ namespace Sem.Ajan
                     uyari = new UyariForm(this, int.Parse(p[1]), int.Parse(p[2]), int.Parse(p[3]), p[4]);
                     uyari.FormClosed += (s, e) => { if (s == uyari) uyari = null; };
                     uyari.Show();
+                    break;
+                case "UZAK":
+                    UzakBandi.Goster(p.Length > 1 && p[1] == "1");
                     break;
                 case "UYARI_KAPAT":
                     uyari?.Close();
@@ -194,7 +198,7 @@ namespace Sem.Ajan
                 using (var kucuk = new Bitmap(w, h))
                 using (var ms = new MemoryStream())
                 {
-                    using (var g = Graphics.FromImage(ham)) g.CopyFromScreen(b.Location, Point.Empty, b.Size);
+                    using (var g = Graphics.FromImage(ham)) { g.CopyFromScreen(b.Location, Point.Empty, b.Size); if (p.Length > 4 && p[4] == "1") Girdi.ImlecCiz(g, b); }
                     using (var g = Graphics.FromImage(kucuk))
                     {
                         g.InterpolationMode = InterpolationMode.HighQualityBilinear; g.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -203,7 +207,8 @@ namespace Sem.Ajan
                     var jpeg = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
                     using (var ep = new EncoderParameters(1))
                     {
-                        ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 72L);
+                        long kalite = 72; if (id.Length > 0 && p.Length > 3) long.TryParse(p[3], out kalite);
+                        ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, Math.Max(30L, Math.Min(90L, kalite)));
                         kucuk.Save(ms, jpeg, ep);
                     }
                     Gonder("RESIM", id, Convert.ToBase64String(ms.ToArray()), "");

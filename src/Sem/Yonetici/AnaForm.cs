@@ -358,7 +358,7 @@ namespace Sem.Yonetici
             if (ayarlar.Dosya)
             {
                 liste.Add(("Dosya gönder", Ik.Yukle, () => DosyaGonder(null), Renk.Yazi2, false));
-                liste.Add(("Dosya al", Ik.Indir, DosyaAl, Renk.Yazi2, false));
+                liste.Add(("Dosyalar", Ik.Klasor, DosyaAl, Renk.Yazi2, false));
             }
             liste.Add(("Kilitle", Ik.Kilit, Kilitle, Renk.Yazi2, false));
             liste.Add(("Yeniden başlat", Ik.Yenile, () => Kapat(true, 60), Renk.Turuncu, true));
@@ -438,7 +438,9 @@ namespace Sem.Yonetici
             var m = new AcilirMenu();
             if (secili.Count == 1)
             {
-                if (ayarlar.Onizleme) m.Ekle("Ekranı göster", Ik.Kamera, () => Guvenli(() => EkranGoster(secili[0])));
+                if (ayarlar.Onizleme) m.Ekle("Ekranı göster", Ik.Kamera, () => Guvenli(() => EkranGoster(secili[0])))
+                                       .Ekle("Uzaktan kontrol", Ik.Pencere, () => Guvenli(() => UzakKontrol(secili[0])));
+                m.Ekle("Bilgiler", Ik.Bilgi, () => Guvenli(() => Bilgiler(secili[0])));
                 m.Ekle("Adı ve grubu düzenle", Ik.Duzenle, () => Guvenli(() => Duzenle(secili[0]))).Ayrac();
             }
             else if (secili.Count > 1) m.Ekle("Grubunu değiştir", Ik.Etiket, () => Guvenli(GrupDegistir)).Ayrac();
@@ -516,6 +518,20 @@ namespace Sem.Yonetici
                             {
                                 var km = new Mesaj("KIMLIK"); km["gorunen"] = p.GorunenAd; km["grup"] = p.Grup; km["simge"] = p.Simge;
                                 try { Baglanti.Gonder(p.Ip, km, 3000); } catch { }
+                            }
+                            // Ekran görme anahtarı (Ayarlar) tüm bilgisayarlara uygulanır; kapalıyken bilgisayar da reddeder.
+                            if (d.Alan.ContainsKey("ekran_izni") && (d["ekran_izni"] == "1") != ayarlar.Onizleme)
+                            {
+                                var em = new Mesaj("AYAR"); em["ekran_izni"] = ayarlar.Onizleme ? "1" : "0";
+                                try { Baglanti.Gonder(p.Ip, em, 3000); } catch { }
+                            }
+                            // Yeni sağlık uyarısı Etkinlik'e düşsün
+                            var sg = d["saglik"];
+                            if (sg != p.SonSaglik)
+                            {
+                                foreach (var u in sg.Split(';').Where(x => x != "" && !(";" + p.SonSaglik + ";").Contains(";" + x + ";")))
+                                    Kaydet(p.Baslik + ": " + u.Substring(u.IndexOf('|') + 1), 2);
+                                p.SonSaglik = sg;
                             }
                         }
                         catch (Exception e)
@@ -965,6 +981,19 @@ namespace Sem.Yonetici
         void ProgramKur()
         {
             var h = Hedefler(); if (h == null) return;
+            using (var f = new ProgramForm(h))
+            {
+                f.ShowDialog(this);
+                if (f.Sonuc == null) return;
+                if (f.Sonuc.Value.dosyadan) { DosyadanKur(h); return; }
+                var (id, ad, guncelle, hedefler) = (f.Sonuc.Value.id, f.Sonuc.Value.ad, f.Sonuc.Value.guncelle, f.Sonuc.Value.hedefler);
+                if (hedefler.Count == 0) return;
+                Uygula((guncelle ? "Güncelle: " : "Kur: ") + ad, hedefler, p => { var m = new Mesaj("PROGRAM_WINGET"); m["id"] = id; m["ad"] = ad; m["islem"] = guncelle ? "guncelle" : "kur"; return m; });
+            }
+        }
+
+        void DosyadanKur(List<Pc> h)
+        {
             string dosya;
             using (var o = new OpenFileDialog { Filter = "Kurulum dosyaları|*.exe;*.msi", Title = "Kurulacak programı seçin" })
             {
@@ -1083,6 +1112,18 @@ namespace Sem.Yonetici
                               : "Dikkat: bu bilgisayarın şifresi değiştirilemedi. Ayrıntı Etkinlik sayfasında.");
                 });
             }
+        }
+
+        void UzakKontrol(Pc p)
+        {
+            if (!p.Acik) { Tost(p.Baslik + " kapalı."); return; }
+            var f = new UzakForm(p); f.Show(this);
+        }
+
+        void Bilgiler(Pc p)
+        {
+            if (!p.Acik) { Tost(p.Baslik + " kapalı."); return; }
+            using (var f = new BilgiForm(p)) f.ShowDialog(this);
         }
 
         void EkranGoster(Pc p)
