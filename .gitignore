@@ -1,0 +1,6 @@
+bin/
+obj/
+*.pem
+*.key
+*.user
+.vs/

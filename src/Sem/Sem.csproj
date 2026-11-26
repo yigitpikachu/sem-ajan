@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>Sem</AssemblyName>
+    <RootNamespace>Sem</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\sem.ico</ApplicationIcon>
+    <Product>Sem Ajan</Product>
+    <Company>Sem Özel Eğitim ve Rehabilitasyon Merkezi</Company>
+    <AssemblyTitle>Sem Bilgisayar Yönetimi</AssemblyTitle>
+    <Version>1.1.0</Version>
+    
+    
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Nullable>disable</Nullable>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <DebugType>none</DebugType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.ServiceProcess" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\logo.png" LogicalName="logo.png" />
+    <EmbeddedResource Include="..\..\assets\duvar.png" LogicalName="duvar.png" />
+    <EmbeddedResource Include="..\..\assets\ikon.ttf" LogicalName="ikon.ttf" />
+  </ItemGroup>
+</Project>

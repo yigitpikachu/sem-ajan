@@ -1,0 +1,49 @@
+# Yeni bir "v1.2.3" etiketi gönderildiğinde Sem.exe'yi derler, gizli anahtarla imzalar ve GitHub Release olarak yayınlar.
+# Bilgisayarlardaki Sem Ajan, sadece bu imzayı taşıyan sürümleri kurar.
+name: Sürüm yayınla
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  yayinla:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Derle
+        run: |
+          SURUM="${GITHUB_REF_NAME#v}"
+          dotnet build src/Sem/Sem.csproj -c Release -p:Version="$SURUM"
+          cp src/Sem/bin/Release/net48/Sem.exe Sem.exe
+
+      - name: İmzala
+        env:
+          SEM_IMZA_ANAHTARI: ${{ secrets.SEM_IMZA_ANAHTARI }}
+        run: |
+          if [ -z "$SEM_IMZA_ANAHTARI" ]; then echo "SEM_IMZA_ANAHTARI gizli değeri tanımlı değil" >&2; exit 1; fi
+          umask 077
+          printf '%s\n' "$SEM_IMZA_ANAHTARI" > imza.pem
+          openssl dgst -sha256 -sign imza.pem -out imza.bin Sem.exe
+          base64 -w0 imza.bin > Sem.exe.sig
+          rm -f imza.pem imza.bin
+          sha256sum Sem.exe
+
+      - name: Yayınla
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOT="docs/surum-notlari/${GITHUB_REF_NAME}.md"
+          if [ -f "$NOT" ]; then
+            gh release create "$GITHUB_REF_NAME" Sem.exe Sem.exe.sig --title "Sem ${GITHUB_REF_NAME}" --notes-file "$NOT"
+          else
+            gh release create "$GITHUB_REF_NAME" Sem.exe Sem.exe.sig --title "Sem ${GITHUB_REF_NAME}" --generate-notes
+          fi
