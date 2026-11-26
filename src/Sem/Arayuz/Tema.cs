@@ -13,8 +13,8 @@ namespace Sem.Arayuz
     public static class Renk
     {
         // Logo renkleri
-        public static readonly Color Mavi = Color.FromArgb(41, 171, 226);
-        public static readonly Color MaviKoyu = Color.FromArgb(24, 140, 192);
+        public static readonly Color Mavi = Color.FromArgb(28, 154, 214);
+        public static readonly Color MaviKoyu = Color.FromArgb(18, 126, 182);
         public static readonly Color Yesil = Color.FromArgb(122, 184, 48);
         public static readonly Color YesilKoyu = Color.FromArgb(98, 156, 32);
         public static readonly Color Turuncu = Color.FromArgb(240, 152, 40);
@@ -22,12 +22,12 @@ namespace Sem.Arayuz
         public static readonly Color PembeKoyu = Color.FromArgb(186, 0, 102);
 
         // Zemin ve yüzeyler (sıcak kırık beyaz, kurum sitesindeki #fffdf8 tonundan)
-        public static readonly Color Zemin = Color.FromArgb(251, 249, 244);
-        public static readonly Color YanMenu = Color.FromArgb(244, 240, 232);
+        public static readonly Color Zemin = Color.FromArgb(247, 247, 244);
+        public static readonly Color YanMenu = Color.FromArgb(240, 240, 236);
         public static readonly Color Yuzey = Color.White;
-        public static readonly Color Cizgi = Color.FromArgb(232, 226, 215);
-        public static readonly Color CizgiKoyu = Color.FromArgb(214, 206, 192);
-        public static readonly Color Hover = Color.FromArgb(238, 233, 223);
+        public static readonly Color Cizgi = Color.FromArgb(231, 230, 226);
+        public static readonly Color CizgiKoyu = Color.FromArgb(212, 211, 205);
+        public static readonly Color Hover = Color.FromArgb(236, 235, 231);
 
         // Yazı
         public static readonly Color Yazi = Color.FromArgb(30, 36, 44);
@@ -55,7 +55,9 @@ namespace Sem.Arayuz
             Mezuniyet = "\ue6e7", Kalp = "\uf47a", Bina = "\uf205", Kitap = "\uf8fe", Yapboz = "\ue9ea",
             Muzik = "\ue855", Firca = "\uf593", Sohbet = "\uf287", Secenekler = "\uf588", Buyut = "\uf160",
             Ac = "\uf583", Etiket = "\uf77d", Yildiz = "\uf710", Ogretmen = "\uf5ce", Oyun = "\uf451",
-            Okundu = "\uf522", AsagiOk = "\uf2a4", Pencere = "\uee5e", GozKapali = "\ue5f6", Parilti = "\ueb34";
+            Okundu = "\uf522", AsagiOk = "\uf2a4", Pencere = "\uee5e", GozKapali = "\ue5f6", Parilti = "\ueb34",
+            Telefon = "\uf5e1", YaziciIk = "\uf62b", GonderOk = "\uf69a", Kopyala = "\uf32c", BulutYukle = "\ue394",
+            Dosya = "\uf379", KlasorAc = "\uf42f", Fotograf = "\uf489", DuvarKagidi = "\uf867", Paylas = "\uf6b0", Esitle2 = "\uf191";
     }
 
     public static class Tema
@@ -135,7 +137,7 @@ namespace Sem.Arayuz
                 {
                     var gr = new RectangleF(r.X, r.Y + S(i), r.Width, r.Height);
                     using (var gp = Yuvarlak(gr, yaricap + i))
-                    using (var b = new SolidBrush(Color.FromArgb(7, 60, 40, 10))) g.FillPath(b, gp);
+                    using (var b = new SolidBrush(Color.FromArgb(7, 20, 24, 32))) g.FillPath(b, gp);
                 }
             }
             using (var p = Yuvarlak(r, yaricap))
@@ -153,7 +155,7 @@ namespace Sem.Arayuz
             {
                 var gr = new RectangleF(r.X - i * 0.5f, r.Y + S(i) * (0.6f + yukselti * 0.6f), r.Width + i, r.Height);
                 using (var gp = Yuvarlak(gr, yaricap + i))
-                using (var b = new SolidBrush(Color.FromArgb((int)(6 + yukselti * 3), 60, 40, 10))) g.FillPath(b, gp);
+                using (var b = new SolidBrush(Color.FromArgb((int)(6 + yukselti * 3), 20, 24, 32))) g.FillPath(b, gp);
             }
             using (var p = Yuvarlak(r, yaricap))
             {

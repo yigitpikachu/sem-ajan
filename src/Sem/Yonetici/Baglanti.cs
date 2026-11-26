@@ -243,34 +243,7 @@ namespace Sem.Yonetici
         }
 
         /// <summary>Ağa "kim var?" diye sorar, cevap veren Sem bilgisayarlarını döndürür (IP → ad).</summary>
-        public static Dictionary<string, string> Kesfet(int beklemeMs = 1200)
-        {
-            var sonuc = new Dictionary<string, string>();
-            using (var u = new UdpClient(0))
-            {
-                u.EnableBroadcast = true;
-                var soru = Encoding.UTF8.GetBytes(Sabitler.KesifSoru);
-                foreach (var b in Uyandirma.YayinAdresleri())
-                    try { u.Send(soru, soru.Length, new IPEndPoint(b, Sabitler.KesifPort)); } catch { }
-                var bitis = DateTime.Now.AddMilliseconds(beklemeMs);
-                while (DateTime.Now < bitis)
-                {
-                    u.Client.ReceiveTimeout = Math.Max(50, (int)(bitis - DateTime.Now).TotalMilliseconds);
-                    try
-                    {
-                        var uzak = new IPEndPoint(IPAddress.Any, 0);
-                        var p = Encoding.UTF8.GetString(u.Receive(ref uzak)).Split('|');
-                        if (p.Length >= 2 && p[0] == Sabitler.KesifCevap)
-                        {
-                            var ip = uzak.Address.IsIPv4MappedToIPv6 ? uzak.Address.MapToIPv4() : uzak.Address;
-                            sonuc[ip.ToString()] = p[1];
-                        }
-                    }
-                    catch (SocketException) { break; }
-                }
-            }
-            return sonuc;
-        }
+        public static Dictionary<string, string> Kesfet(int beklemeMs = 1200) => Kesif.Sor(beklemeMs).ToDictionary(k => k.Ip, k => k.Ad);
 
         /// <summary>Kapalı bilgisayarı ağdan açmayı dener (BIOS'ta Wake-on-LAN açık olmalı).</summary>
         public static void Uyandir(string mac) => Uyandirma.Gonder(mac);

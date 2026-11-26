@@ -27,6 +27,7 @@ namespace Sem.Ortak
         }
         public const int MaxCerceve = 400 * 1024 * 1024; // 400 MB
         public const string PipeAdi = "SemAjanEkran";
+        public const string PaylasPipe = "SemAjanPaylas";
     }
 
     /// <summary>Bir komut ya da cevap: anahtar/değer başlıkları + isteğe bağlı ikili veri.</summary>
@@ -191,6 +192,49 @@ namespace Sem.Ortak
                 return Mesaj.Coz(Sifreleme.Ac(anahtar, nonce, "A", CerceveOku(s)));
             }
         }
+    }
+
+    /// <summary>Ağdaki Sem bilgisayarları (UDP keşif cevabı).</summary>
+    public class KesifSonucu
+    {
+        public string Ip = "", Ad = "", Surum = "", Isim = "", Grup = "", Simge = "";
+        public bool Yonetici;
+        public string Baslik => Isim != "" ? Isim : Ad;
+    }
+
+    public static class Kesif
+    {
+        /// <summary>Ağa "kim var?" diye sorar, cevap veren Sem bilgisayarlarını döndürür.</summary>
+        public static List<KesifSonucu> Sor(int beklemeMs = 1200)
+        {
+            var sonuc = new Dictionary<string, KesifSonucu>();
+            using (var u = new UdpClient(0))
+            {
+                u.EnableBroadcast = true;
+                var soru = Encoding.UTF8.GetBytes(Sabitler.KesifSoru);
+                foreach (var b in Uyandirma.YayinAdresleri())
+                    try { u.Send(soru, soru.Length, new IPEndPoint(b, Sabitler.KesifPort)); } catch { }
+                var bitis = DateTime.Now.AddMilliseconds(beklemeMs);
+                while (DateTime.Now < bitis)
+                {
+                    u.Client.ReceiveTimeout = Math.Max(50, (int)(bitis - DateTime.Now).TotalMilliseconds);
+                    try
+                    {
+                        var uzak = new IPEndPoint(IPAddress.Any, 0);
+                        var p = Encoding.UTF8.GetString(u.Receive(ref uzak)).Split('|');
+                        if (p.Length < 2 || p[0] != Sabitler.KesifCevap) continue;
+                        var ip = uzak.Address.IsIPv4MappedToIPv6 ? uzak.Address.MapToIPv4() : uzak.Address;
+                        Func<int, string> a = i => p.Length > i ? p[i] : "";
+                        sonuc[ip.ToString()] = new KesifSonucu { Ip = ip.ToString(), Ad = a(1), Surum = a(2), Isim = a(3), Grup = a(4), Yonetici = a(5) == "1", Simge = a(6) };
+                    }
+                    catch (SocketException) { break; }
+                }
+            }
+            return sonuc.Values.ToList();
+        }
+
+        public static string Cevap(string ad, string isim, string grup, bool yonetici, string simge) =>
+            string.Join("|", Sabitler.KesifCevap, ad, Sabitler.Surum, (isim ?? "").Replace("|", " "), grup ?? "", yonetici ? "1" : "0", simge ?? "");
     }
 
     /// <summary>Wake-on-LAN: kapalı bilgisayarı ağdan açma sinyali.</summary>

@@ -59,6 +59,13 @@ namespace Sem.Ajan
         readonly List<string> okunan = new List<string>();
         DateTime sonSabahSinyal = DateTime.MinValue;
 
+        Paylasim paylasim;
+        public AjanAyar Ayar => ayar;
+        public bool EkranVar => EkranBagli;
+
+        /// <summary>Ayarı kilit altında değiştirip kaydeder.</summary>
+        public void AyarDegistir(Action<AjanAyar> degis) { lock (kilit) { degis(ayar); ayar.Yaz(); } }
+
         public AjanServis() { ServiceName = HizmetAdi; CanStop = true; CanShutdown = true; }
 
         protected override void OnStart(string[] args) { Baslat(); }
@@ -74,6 +81,8 @@ namespace Sem.Ajan
             new Thread(TcpDongu) { IsBackground = true }.Start();
             new Thread(KesifDongu) { IsBackground = true }.Start();
             new Thread(EkranDongu) { IsBackground = true }.Start();
+            paylasim = new Paylasim(this);
+            try { paylasim.Baslat(); } catch (Exception e) { Gunluk.Yaz("Paylaşım: " + e.Message); }
             zamanlayici = new Timer(_ => Tik(), null, 3000, 5000);
             Gunluk.Yaz("Hizmet başladı, sürüm " + Sabitler.Surum);
         }
@@ -84,6 +93,7 @@ namespace Sem.Ajan
             try { zamanlayici?.Dispose(); } catch { }
             try { tcp?.Stop(); } catch { }
             try { udp?.Close(); } catch { }
+            try { paylasim?.Durdur(); } catch { }
         }
 
         // ---------------------------------------------------------------- Zamanlayıcı
@@ -93,6 +103,8 @@ namespace Sem.Ajan
             try { EkranBekci(); } catch (Exception e) { Gunluk.Yaz("Ekran: " + e.Message); }
             try { GuncellemeKontrol(); } catch (Exception e) { Gunluk.Yaz("Güncelleme: " + e.Message); }
             try { SabahKontrol(); } catch (Exception e) { Gunluk.Yaz("Sabah: " + e.Message); }
+            try { paylasim?.OrtakKontrol(); } catch (Exception e) { Gunluk.Yaz("Ortak: " + e.Message); }
+            try { KilitTasarimi(); } catch { }
         }
 
         // ---------------------------------------------------------------- Sabah açılma
@@ -256,7 +268,8 @@ namespace Sem.Ajan
                         var yaz = new StreamWriter(p, new UTF8Encoding(false)) { AutoFlush = true };
                         lock (ekranKilit) ekranYaz = yaz;
                         lock (kilit) uyariGosterildi = false; // yeni açılan ekrana bekleyen uyarıyı tekrar göster
-                        EkranaGonder("DUVAR", AjanAyar.DuvarKagidi, ayar.DuvarKoru ? "1" : "0");
+                        DuvarGonder();
+                        EkranaGonder("PAYLASIM", ayar.Paylasim ? "1" : "0", Klasorler.Kok);
                         string satir;
                         while ((satir = oku.ReadLine()) != null) EkrandanGelen(EkranHatti.Coz(satir));
                     }
@@ -266,7 +279,7 @@ namespace Sem.Ajan
             }
         }
 
-        bool EkranaGonder(params string[] parcalar)
+        public bool EkranaGonder(params string[] parcalar)
         {
             lock (ekranKilit)
             {
@@ -292,6 +305,9 @@ namespace Sem.Ajan
                     if (b != null) { b.Veri = p.Length > 2 ? p[2] : ""; b.Hata = p.Length > 3 ? p[3] : ""; b.Olay.Set(); }
                     break;
                 }
+                case "CEVAP":
+                    paylasim?.CevapGeldi(p.Length > 1 ? p[1] : "", p.Length > 2 ? p[2] : "0");
+                    break;
                 case "OKUNDU":
                     if (p.Length < 2 || p[1] == "") break;
                     lock (okunan)
@@ -342,7 +358,7 @@ namespace Sem.Ajan
                         var uzak = new IPEndPoint(IPAddress.Any, 0);
                         var b = udp.Receive(ref uzak);
                         if (Encoding.UTF8.GetString(b) != Sabitler.KesifSoru) continue;
-                        var cevap = Encoding.UTF8.GetBytes(Sabitler.KesifCevap + "|" + Environment.MachineName + "|" + Sabitler.Surum);
+                        var cevap = Encoding.UTF8.GetBytes(Kesif.Cevap(Environment.MachineName, ayar.Isim, ayar.Grup, ayar.Yonetici, ayar.Simge));
                         udp.Send(cevap, cevap.Length, uzak);
                     }
                 }
@@ -404,9 +420,16 @@ namespace Sem.Ajan
 
         Mesaj Isle(Mesaj m, TcpClient c)
         {
+            if (m.Komut.StartsWith("PAYLAS_") || m.Komut.StartsWith("ORTAK_"))
+                return paylasim.Isle(m) ?? Mesaj.Hata("Bilinmeyen komut: " + m.Komut);
             switch (m.Komut)
             {
                 case "DURUM": return Durum(c);
+
+                case "KIMLIK":
+                    AyarDegistir(a => { a.GorunenAd = m["gorunen"]; a.Grup = m["grup"]; a.Simge = m["simge"]; });
+                    if (ayar.DuvarKip != "") { DuvarGonder(); kilitGunu = DateTime.MinValue; }
+                    return Mesaj.Basari("Ad kaydedildi");
 
                 case "DUYURU":
                     return EkranaGonder("DUYURU", m["metin"], m["baslik"], m["id"]) ? Mesaj.Basari("Duyuru ekrana geldi") : Mesaj.Hata("Ekranda açık oturum yok");
@@ -464,10 +487,13 @@ namespace Sem.Ajan
                         if (int.TryParse(m["ertele_hak"], out v) && v >= 0 && v <= 10) ayar.ErteleHak = v;
                         if (m.Alan.ContainsKey("otomatik")) ayar.OtomatikKapanma = m["otomatik"] == "1";
                         if (m.Alan.ContainsKey("oto_guncelle")) ayar.OtoGuncelle = m["oto_guncelle"] == "1";
+                        if (m.Alan.ContainsKey("paylasim")) ayar.Paylasim = m["paylasim"] == "1";
+                        if (m.Alan.ContainsKey("telefon")) ayar.Telefon = m["telefon"] == "1";
                         ayar.Yaz(); uyariGosterildi = false;
                     }
                     EkranaGonder("UYARI_KAPAT");
-                    return Mesaj.Basari("Kapanma saatleri kaydedildi");
+                    EkranaGonder("PAYLASIM", ayar.Paylasim ? "1" : "0", Klasorler.Kok);
+                    return Mesaj.Basari("Ayarlar kaydedildi");
 
                 case "DUVAR":
                 {
@@ -475,22 +501,26 @@ namespace Sem.Ajan
                     using (var ms = new MemoryStream(m.Veri))
                     using (var img = Image.FromStream(ms))
                         img.Save(AjanAyar.DuvarKagidi, ImageFormat.Png);
-                    if (m.Alan.ContainsKey("koru")) { ayar.DuvarKoru = m["koru"] == "1"; lock (kilit) ayar.Yaz(); }
-                    EkranaGonder("DUVAR", AjanAyar.DuvarKagidi, ayar.DuvarKoru ? "1" : "0");
+                    AyarDegistir(a => { if (m.Alan.ContainsKey("koru")) a.DuvarKoru = m["koru"] == "1"; a.DuvarKip = ""; });
+                    DuvarGonder();
+                    if (m["kilit"] == "1") KilitEkrani(AjanAyar.DuvarKagidi);
                     return Mesaj.Basari("Duvar kâğıdı değişti");
                 }
 
+                case "DUVAR_TASARIM":
+                    AyarDegistir(a => { a.DuvarKip = m["kip"]; a.DuvarOda = m["oda"] == "1"; a.DuvarKilit = m["kilit"] != "0"; a.DuvarKoru = m["koru"] != "0"; });
+                    DuvarGonder();
+                    kilitGunu = DateTime.MinValue; KilitTasarimi();
+                    return Mesaj.Basari(ayar.DuvarKip == "otomatik" ? "Duvar kâğıdı: mevsime ve özel günlere göre" : "Duvar kâğıdı: kurumsal");
+
                 case "DOSYA_GONDER":
                 {
-                    var klasor = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "Sem Gelen Dosyalar");
-                    Directory.CreateDirectory(klasor);
-                    var ad = Path.GetFileName(m["ad"]);
-                    if (string.IsNullOrWhiteSpace(ad)) return Mesaj.Hata("Dosya adı yok");
-                    var hedef = Path.Combine(klasor, ad);
-                    for (int i = 2; File.Exists(hedef); i++) hedef = Path.Combine(klasor, Path.GetFileNameWithoutExtension(ad) + " (" + i + ")" + Path.GetExtension(ad));
+                    if (string.IsNullOrWhiteSpace(Path.GetFileName(m["ad"]))) return Mesaj.Hata("Dosya adı yok");
+                    var klasor = Klasorler.Gelen("Yönetici");
+                    var hedef = Klasorler.Benzersiz(klasor, m["ad"]);
                     File.WriteAllBytes(hedef, m.Veri);
-                    EkranaGonder("DOSYA", Path.GetFileName(hedef));
-                    return Mesaj.Basari("Dosya masaüstündeki 'Sem Gelen Dosyalar' klasörüne kondu");
+                    EkranaGonder("GELDI", "Yönetici", "1", klasor, Path.GetFileName(hedef));
+                    return Mesaj.Basari("Dosya masaüstünde Sem Dosyalar > Gelen > Yönetici klasörüne kondu");
                 }
 
                 case "DOSYA_LISTE": return DosyaListe(m["yol"]);
@@ -587,6 +617,9 @@ namespace Sem.Ajan
             r["otomatik"] = ayar.OtomatikKapanma ? "1" : "0";
             r["oto_guncelle"] = ayar.OtoGuncelle ? "1" : "0";
             r["sabah_saat"] = ayar.SabahSaat; r["sabah_gunler"] = ayar.SabahGunler;
+            r["gorunen"] = ayar.GorunenAd; r["grup"] = ayar.Grup; r["simge"] = ayar.Simge;
+            r["duvar_kip"] = ayar.DuvarKip;
+            r["paylasim"] = ayar.Paylasim ? "1" : "0"; r["telefon"] = ayar.Telefon ? "1" : "0"; r["yonetici"] = ayar.Yonetici ? "1" : "0";
             lock (okunan) r["okunan"] = string.Join(";", okunan.Skip(Math.Max(0, okunan.Count - 50)));
             return r;
         }
@@ -618,6 +651,48 @@ namespace Sem.Ajan
             }
             catch { }
             return "";
+        }
+
+        void DuvarGonder()
+        {
+            if (ayar.DuvarKip == "") EkranaGonder("DUVAR", AjanAyar.DuvarKagidi, ayar.DuvarKoru ? "1" : "0");
+            else EkranaGonder("DUVAR_CIZ", ayar.DuvarKip, ayar.DuvarOda ? ayar.GorunenAd : "", ayar.DuvarKoru ? "1" : "0");
+        }
+
+        DateTime kilitGunu = DateTime.MinValue;
+
+        /// <summary>Tasarım kipinde kilit ekranını her gün yeniden çizer (özel günler için).</summary>
+        void KilitTasarimi()
+        {
+            if (ayar.DuvarKip == "" || !ayar.DuvarKilit || kilitGunu == DateTime.Today) return;
+            kilitGunu = DateTime.Today;
+            try
+            {
+                var t = Sem.Arayuz.Duvar.Sec(ayar.DuvarKip, DateTime.Now);
+                var yol = Path.Combine(AjanAyar.Klasor, "kilit_" + DateTime.Now.ToString("yyyyMMdd") + ".png");
+                using (var logo = Sem.Arayuz.Tema.Logo())
+                using (var b = Sem.Arayuz.Duvar.Ciz(t, 1920, 1080, ayar.DuvarOda ? ayar.GorunenAd : "", logo)) b.Save(yol, ImageFormat.Png);
+                KilitEkrani(yol, false);
+                foreach (var f in Directory.GetFiles(AjanAyar.Klasor, "kilit_*.png")) if (!f.Equals(yol, StringComparison.OrdinalIgnoreCase)) try { File.Delete(f); } catch { }
+            }
+            catch (Exception e) { Gunluk.Yaz("Kilit ekranı: " + e.Message); }
+        }
+
+        /// <summary>Kilit ekranı resmini ayarlar (Windows 10/11 PersonalizationCSP; bazı sürümlerde etkisiz olabilir).</summary>
+        static void KilitEkrani(string resim, bool kopyala = true)
+        {
+            try
+            {
+                var hedef = resim;
+                if (kopyala) { hedef = Path.Combine(AjanAyar.Klasor, "kilit.png"); File.Copy(resim, hedef, true); }
+                using (var k = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP"))
+                {
+                    k.SetValue("LockScreenImagePath", hedef);
+                    k.SetValue("LockScreenImageUrl", hedef);
+                    k.SetValue("LockScreenImageStatus", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                }
+            }
+            catch (Exception e) { Gunluk.Yaz("Kilit ekranı: " + e.Message); }
         }
 
         static Mesaj DosyaListe(string yol)

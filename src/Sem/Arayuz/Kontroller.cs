@@ -34,7 +34,7 @@ namespace Sem.Arayuz
             BackColor = Color.Transparent;
             Font = Tema.YaziKalin(9.75f);
             Cursor = Cursors.Hand;
-            Height = Tema.S(40);
+            Height = Tema.S(36);
             Margin = Tema.Pd(4, 4, 4, 4);
             BoyutAyarla();
         }
@@ -101,7 +101,7 @@ namespace Sem.Arayuz
                 case ButonTuru.Uyari: ana = Renk.Turuncu; break;
                 default: ana = Color.Empty; break;
             }
-            if (!Enabled) return (Tur == ButonTuru.Sade ? Color.Transparent : Color.FromArgb(240, 237, 231), Renk.Yazi3, null);
+            if (!Enabled) return (Tur == ButonTuru.Sade ? Color.Transparent : Color.FromArgb(238, 238, 234), Renk.Yazi3, null);
             if (ana != Color.Empty)
             {
                 var d = basili ? Renk.Karistir(ana, Color.Black, 0.18) : uzerinde ? Renk.Karistir(ana, Color.Black, 0.08) : ana;
@@ -109,7 +109,7 @@ namespace Sem.Arayuz
             }
             if (Tur == ButonTuru.Sade)
                 return (basili ? Renk.CizgiKoyu : uzerinde ? Renk.Hover : Color.Transparent, Renk.Yazi, null);
-            return (basili ? Renk.Hover : uzerinde ? Color.FromArgb(250, 248, 243) : Renk.Yuzey, Renk.Yazi, Renk.Cizgi);
+            return (basili ? Renk.Hover : uzerinde ? Color.FromArgb(249, 249, 247) : Renk.Yuzey, Renk.Yazi, Renk.Cizgi);
         }
 
         protected override void OnPaint(PaintEventArgs e)

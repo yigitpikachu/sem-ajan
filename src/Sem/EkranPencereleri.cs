@@ -71,12 +71,6 @@ namespace Sem.Ajan
                 using (var p = Tema.Yuvarlak(kart, Tema.S(22)))
                 {
                     using (var b = new SolidBrush(Renk.Yuzey)) g.FillPath(b, p);
-                    // Üstte logonun dört rengiyle ince şerit
-                    var eski = g.Clip; g.SetClip(p);
-                    var renkler = new[] { Renk.Mavi, Renk.Yesil, Renk.Turuncu, Renk.Pembe };
-                    for (int i = 0; i < 4; i++)
-                        using (var b = new SolidBrush(renkler[i])) g.FillRectangle(b, kart.X + kart.Width * i / 4f, kart.Y, kart.Width / 4f + 1, Tema.S(6));
-                    g.Clip = eski;
                 }
 
                 int x = kart.X + Tema.S(40), y = kart.Y + Tema.S(40);
@@ -212,7 +206,7 @@ namespace Sem.Ajan
     {
         protected override bool ShowWithoutActivation => true;
 
-        public BildirimForm(string baslik, string metin, string ikon = Ik.Zil, Color? renk = null) : base(null, 380, 96, false)
+        public BildirimForm(string baslik, string metin, string ikon = Ik.Zil, Color? renk = null, Action tikla = null) : base(null, 380, 96, false)
         {
             TopMost = true; StartPosition = FormStartPosition.Manual; BackColor = Renk.Yuzey; Icerik.BackColor = Renk.Yuzey;
             var alan = Screen.PrimaryScreen.WorkingArea;
@@ -224,7 +218,7 @@ namespace Sem.Ajan
             var b1 = Yazi.Etiket(baslik, 10.5f, true); b1.Location = new Point(Tema.S(58), 0);
             var m = Yazi.Etiket(metin, 9f, false, Renk.Yazi2, false); m.SetBounds(Tema.S(58), Tema.S(22), Icerik.Width - Tema.S(58), Tema.S(44));
             Icerik.Controls.AddRange(new Control[] { ik, b1, m });
-            foreach (Control c in new Control[] { this, Icerik, ik, b1, m }) c.Click += (s, e) => Close();
+            foreach (Control c in new Control[] { this, Icerik, ik, b1, m }) { c.Click += (s, e) => { try { tikla?.Invoke(); } catch { } Close(); }; if (tikla != null) c.Cursor = Cursors.Hand; }
             var t = new Timer { Interval = 9000 };
             t.Tick += (s, e) => { t.Dispose(); Close(); };
             t.Start();

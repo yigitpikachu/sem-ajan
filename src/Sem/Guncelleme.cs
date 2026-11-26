@@ -68,7 +68,7 @@ namespace Sem.Ortak
                 using (var h = SHA256.Create()) oz = BitConverter.ToString(h.ComputeHash(exe)).Replace("-", "").ToLowerInvariant();
                 if (oz != s.Ozet) throw new CryptographicException("İndirilen dosya bozuk, güncelleme yapılmadı");
             }
-            var tmp = Path.Combine(Path.GetTempPath(), "sem_surum_" + Guid.NewGuid().ToString("N") + ".exe");
+            var tmp = Path.Combine(Gecici(), "sem_surum_" + Guid.NewGuid().ToString("N") + ".exe");
             try
             {
                 File.WriteAllBytes(tmp, exe);
@@ -81,10 +81,24 @@ namespace Sem.Ortak
             return exe;
         }
 
+        /// <summary>Geçici dosyalar Defender istisnası olan ProgramData\Sem altında; yazılamıyorsa sistemin geçici klasöründe.</summary>
+        static string Gecici()
+        {
+            try
+            {
+                var k = Path.Combine(Sem.Ajan.AjanAyar.Klasor, "gecici");
+                Directory.CreateDirectory(k);
+                var t = Path.Combine(k, Guid.NewGuid().ToString("N"));
+                File.WriteAllText(t, ""); File.Delete(t);
+                return k;
+            }
+            catch { return Path.GetTempPath(); }
+        }
+
         /// <summary>Exe içindeki sürüm numarası.</summary>
         public static string DosyaSurumu(byte[] exe)
         {
-            var tmp = Path.Combine(Path.GetTempPath(), "sem_surum_" + Guid.NewGuid().ToString("N") + ".exe");
+            var tmp = Path.Combine(Gecici(), "sem_surum_" + Guid.NewGuid().ToString("N") + ".exe");
             try { File.WriteAllBytes(tmp, exe); return FileVersionInfo.GetVersionInfo(tmp).ProductVersion; }
             finally { try { File.Delete(tmp); } catch { } }
         }

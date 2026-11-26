@@ -33,16 +33,27 @@ namespace Sem
                 return 0;
             }
 
+            if (mod == "/paylas")
+            {
+                Application.Run(new Ajan.PaylasForm(args.Skip(1)));
+                return 0;
+            }
+
             if (mod == "/yonetim")
             {
                 bool tepsi = args.Skip(1).Any(a => a.Equals("/tepsi", StringComparison.OrdinalIgnoreCase));
+                bool yeniden = args.Skip(1).Any(a => a.Equals("/yeniden", StringComparison.OrdinalIgnoreCase));
                 bool ilk;
-                using (var m = new Mutex(true, @"Local\SemYonetim", out ilk))
+                using (var m = new Mutex(false, @"Local\SemYonetim"))
                 using (var goster = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\SemYonetimGoster"))
                 {
+                    // Güncellemeden sonra kendini yeniden açarken eski sürümün kapanmasını bekle.
+                    try { ilk = m.WaitOne(yeniden ? 15000 : 0); }
+                    catch (AbandonedMutexException) { ilk = true; }
                     // Zaten açıksa (ör. saatin yanında bekliyorsa) o pencereyi öne getir.
                     if (!ilk) { if (!tepsi) goster.Set(); return 0; }
-                    Application.Run(new Yonetici.AnaForm(tepsi, goster));
+                    try { Application.Run(new Yonetici.AnaForm(tepsi, goster)); }
+                    finally { try { m.ReleaseMutex(); } catch { } }
                 }
                 return 0;
             }

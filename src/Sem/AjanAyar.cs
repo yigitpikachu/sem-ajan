@@ -26,6 +26,9 @@ namespace Sem.Ajan
         public int ErteleHak = 2;
         public string BugunKapatmaTarihi = ""; // yyyy-MM-dd: o gün otomatik kapanma yapılmaz
         public bool DuvarKoru = true;
+        public string DuvarKip = "";        // "" = gönderilen resim, "kurumsal", "otomatik" (mevsim + özel günler)
+        public bool DuvarOda = true;        // tasarımda bilgisayarın adı görünsün
+        public bool DuvarKilit = true;      // kilit ekranına da uygula
         public bool OtomatikKapanma = true; // yönetici bilgisayarında kapalı
         public bool OtoGuncelle = true;     // GitHub'dan doğrulanmış yeni sürümü kendisi kursun
 
@@ -34,6 +37,16 @@ namespace Sem.Ajan
         public string SabahGunler = "2,3,4,5,6"; // DayOfWeek (0 = Pazar)
         public string SabahMacler = "";     // "AA-BB-..;CC-DD-.."
         public bool WolHazir;               // ağ kartının uyandırma ayarı açıldı mı
+
+        // Paylaşım (1.4)
+        public bool Yonetici;               // kurulumda "Yönetici bilgisayarı" seçildi mi
+        public string GorunenAd = "", Grup = "", Simge = ""; // yönetim ekranında verilen ad (paylaşımda görünür)
+        public bool Paylasim = true;        // bilgisayarlar arası ve telefon paylaşımı
+        public bool Telefon = true;         // LocalSend ile telefonlardan dosya kabul et
+        public string Parmakizi = "";       // LocalSend cihaz kimliği
+        public string YaziciIzinli = "";    // "her zaman izin ver" denen telefonlar (parmak izi;...)
+        public bool LocalSendKaldirildi;
+        public string Isim => GorunenAd != "" ? GorunenAd : Environment.MachineName;
 
         public static AjanAyar Oku()
         {
@@ -53,12 +66,24 @@ namespace Sem.Ajan
             if (d.TryGetValue("ertele_hak", out v)) int.TryParse(v, out a.ErteleHak);
             if (d.TryGetValue("bugun_kapatma", out v)) a.BugunKapatmaTarihi = v;
             if (d.TryGetValue("duvar_koru", out v)) a.DuvarKoru = v != "0";
+            if (d.TryGetValue("duvar_kip", out v)) a.DuvarKip = v;
+            if (d.TryGetValue("duvar_oda", out v)) a.DuvarOda = v != "0";
+            if (d.TryGetValue("duvar_kilit", out v)) a.DuvarKilit = v != "0";
             if (d.TryGetValue("otomatik_kapanma", out v)) a.OtomatikKapanma = v != "0";
             if (d.TryGetValue("oto_guncelle", out v)) a.OtoGuncelle = v != "0";
             if (d.TryGetValue("sabah_saat", out v)) a.SabahSaat = v;
             if (d.TryGetValue("sabah_gunler", out v)) a.SabahGunler = v;
             if (d.TryGetValue("sabah_macler", out v)) a.SabahMacler = v;
             if (d.TryGetValue("wol_hazir", out v)) a.WolHazir = v == "1";
+            if (d.TryGetValue("yonetici", out v)) a.Yonetici = v == "1"; else a.Yonetici = !a.OtomatikKapanma;
+            if (d.TryGetValue("gorunen_ad", out v)) a.GorunenAd = v;
+            if (d.TryGetValue("grup", out v)) a.Grup = v;
+            if (d.TryGetValue("simge", out v)) a.Simge = v;
+            if (d.TryGetValue("paylasim", out v)) a.Paylasim = v != "0";
+            if (d.TryGetValue("telefon", out v)) a.Telefon = v != "0";
+            if (d.TryGetValue("parmakizi", out v)) a.Parmakizi = v;
+            if (d.TryGetValue("yazici_izinli", out v)) a.YaziciIzinli = v;
+            if (d.TryGetValue("localsend_kaldirildi", out v)) a.LocalSendKaldirildi = v == "1";
             return a;
         }
 
@@ -73,16 +98,30 @@ namespace Sem.Ajan
             sb.AppendLine("ertele_hak=" + ErteleHak);
             sb.AppendLine("bugun_kapatma=" + BugunKapatmaTarihi);
             sb.AppendLine("duvar_koru=" + (DuvarKoru ? "1" : "0"));
+            sb.AppendLine("duvar_kip=" + DuvarKip);
+            sb.AppendLine("duvar_oda=" + (DuvarOda ? "1" : "0"));
+            sb.AppendLine("duvar_kilit=" + (DuvarKilit ? "1" : "0"));
             sb.AppendLine("otomatik_kapanma=" + (OtomatikKapanma ? "1" : "0"));
             sb.AppendLine("oto_guncelle=" + (OtoGuncelle ? "1" : "0"));
             sb.AppendLine("sabah_saat=" + SabahSaat);
             sb.AppendLine("sabah_gunler=" + SabahGunler);
             sb.AppendLine("sabah_macler=" + SabahMacler);
             sb.AppendLine("wol_hazir=" + (WolHazir ? "1" : "0"));
+            sb.AppendLine("yonetici=" + (Yonetici ? "1" : "0"));
+            sb.AppendLine("gorunen_ad=" + Tek(GorunenAd));
+            sb.AppendLine("grup=" + Tek(Grup));
+            sb.AppendLine("simge=" + Tek(Simge));
+            sb.AppendLine("paylasim=" + (Paylasim ? "1" : "0"));
+            sb.AppendLine("telefon=" + (Telefon ? "1" : "0"));
+            sb.AppendLine("parmakizi=" + Parmakizi);
+            sb.AppendLine("yazici_izinli=" + YaziciIzinli);
+            sb.AppendLine("localsend_kaldirildi=" + (LocalSendKaldirildi ? "1" : "0"));
             var tmp = Dosya + ".tmp";
             File.WriteAllText(tmp, sb.ToString(), Encoding.UTF8);
             if (File.Exists(Dosya)) File.Replace(tmp, Dosya, null); else File.Move(tmp, Dosya);
         }
+
+        static string Tek(string s) => (s ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
 
         /// <summary>"18:00" → bugünün o saati; boş ya da "yok" → null (o gün otomatik kapanma yok).</summary>
         public DateTime? BugunkuKapanma(DateTime simdi)

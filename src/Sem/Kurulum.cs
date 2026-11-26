@@ -100,7 +100,10 @@ namespace Sem
             var ayar = AjanAyar.Oku();
             ayar.Anahtar = Sifreleme.AnahtarUret(sifre);
             ayar.OtomatikKapanma = !yoneticiBilgisayari;
+            ayar.Yonetici = yoneticiBilgisayari;
             ayar.Yaz();
+            DefenderIstisnasi();
+            PaylasimPortlari(true);
 
             if (!File.Exists(AjanAyar.DuvarKagidi))
                 using (var s = typeof(Kurulum).Assembly.GetManifestResourceStream("duvar.png"))
@@ -126,7 +129,35 @@ namespace Sem
                 else try { File.Delete(lnk); } catch { }
             }
 
+            // Her bilgisayarda: üstüne dosya bırakınca gönderme penceresini açan "Sem Paylaş" kısayolu.
+            KisayolOlustur(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "Sem Paylaş.lnk"), exe, "/paylas", "Dosyaları bilgisayarlara ve telefonlara gönder");
+            if (yoneticiBilgisayari) try { Paylasim.OrtakKaynakHazirla(); } catch { }
+
             HizmetiBaslat();
+        }
+
+        /// <summary>Program ve veri klasörlerini Windows Defender taramasının dışında tutar (yanlış alarmla silinmesin).</summary>
+        /// <summary>LocalSend (telefon) paylaşımı http.sys üzerinden çalıştığı için program kuralı yetmez; port kuralı gerekir.</summary>
+        public static void PaylasimPortlari(bool ekle)
+        {
+            try
+            {
+                Komut("netsh.exe", "advfirewall firewall delete rule name=\"Sem Paylas\"");
+                if (!ekle) return;
+                Komut("netsh.exe", "advfirewall firewall add rule name=\"Sem Paylas\" dir=in action=allow protocol=TCP localport=53317 profile=any");
+                Komut("netsh.exe", "advfirewall firewall add rule name=\"Sem Paylas\" dir=in action=allow protocol=UDP localport=53317 profile=any");
+            }
+            catch { }
+        }
+
+        public static void DefenderIstisnasi()
+        {
+            try
+            {
+                var yollar = "'" + AjanAyar.KurulumKlasoru.Replace("'", "''") + "','" + AjanAyar.Klasor.Replace("'", "''") + "'";
+                Komut("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -Command \"Add-MpPreference -ExclusionPath " + yollar + " -ErrorAction SilentlyContinue\"");
+            }
+            catch { }
         }
 
         public static void Kaldir()
@@ -135,21 +166,29 @@ namespace Sem
             Komut("sc.exe", "delete " + AjanServis.HizmetAdi);
             DigerSemleriKapat();
             Komut("netsh.exe", "advfirewall firewall delete rule name=\"Sem Ajan\"");
+            PaylasimPortlari(false);
             foreach (var yer in new[] { Environment.SpecialFolder.CommonPrograms, Environment.SpecialFolder.CommonDesktopDirectory, Environment.SpecialFolder.CommonStartup })
                 try { File.Delete(Path.Combine(Environment.GetFolderPath(yer), "Sem Ajan.lnk")); } catch { }
+            try { File.Delete(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "Sem Paylaş.lnk")); } catch { }
+            try
+            {
+                var yollar = "'" + AjanAyar.KurulumKlasoru.Replace("'", "''") + "','" + AjanAyar.Klasor.Replace("'", "''") + "'";
+                Komut("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -Command \"Remove-MpPreference -ExclusionPath " + yollar + " -ErrorAction SilentlyContinue\"");
+            }
+            catch { }
             try { Directory.Delete(AjanAyar.Klasor, true); } catch { }
             // Çalışan exe kendini silemez; kısa bir bekleyişten sonra cmd silsin.
             Process.Start(new ProcessStartInfo("cmd.exe", "/c ping 127.0.0.1 -n 3 >nul & rmdir /s /q \"" + AjanAyar.KurulumKlasoru + "\"") { CreateNoWindow = true, UseShellExecute = false });
         }
 
-        static void KisayolOlustur(string lnk, string hedef, string arg)
+        public static void KisayolOlustur(string lnk, string hedef, string arg, string aciklama = "Sem Ajan bilgisayar yönetimi")
         {
             try
             {
                 var t = Type.GetTypeFromProgID("WScript.Shell");
                 dynamic sh = Activator.CreateInstance(t);
                 dynamic k = sh.CreateShortcut(lnk);
-                k.TargetPath = hedef; k.Arguments = arg; k.IconLocation = hedef + ",0"; k.Description = "Sem Ajan bilgisayar yönetimi";
+                k.TargetPath = hedef; k.Arguments = arg; k.IconLocation = hedef + ",0"; k.Description = aciklama;
                 k.Save();
             }
             catch { }
@@ -162,7 +201,17 @@ namespace Sem
             {
                 Thread.Sleep(2000);
                 HizmetiDurdur();
+                DefenderIstisnasi();
+                PaylasimPortlari(true);
                 ExeKopyala();
+                try
+                {
+                    // 1.4: her bilgisayara "Sem Paylaş" kısayolu
+                    var lnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "Sem Paylaş.lnk");
+                    if (!File.Exists(lnk)) KisayolOlustur(lnk, AjanAyar.KurulumExe, "/paylas", "Dosyaları bilgisayarlara ve telefonlara gönder");
+                    if (AjanAyar.Oku().Yonetici) Paylasim.OrtakKaynakHazirla();
+                }
+                catch { }
                 Gunluk.Yaz("Güncellendi: " + Sabitler.Surum);
                 HizmetiBaslat();
                 return 0;

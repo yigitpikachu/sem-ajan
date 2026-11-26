@@ -42,7 +42,7 @@ namespace Sem.Yonetici
         void Boyutla()
         {
             if (liste) { Height = Tema.S(60); Margin = Tema.Pd(0, 0, 0, 2); }
-            else { Size = onizleme ? Tema.S(276, 258) : Tema.S(276, 112); Margin = Tema.Pd(0, 0, 10, 10); }
+            else { Size = onizleme ? Tema.S(236, 216) : Tema.S(236, 98); Margin = Tema.Pd(0, 0, 8, 8); }
         }
 
         void Kalk(bool k) { kalkmaHedef = k ? 1 : 0; anim.Start(); }
@@ -133,15 +133,15 @@ namespace Sem.Yonetici
             var p = Pc; var d = p.SonDurum;
             float lift = kalkma * Tema.S(3);
             var r = new RectangleF(Tema.S(4), Tema.S(4) - lift, Width - Tema.S(8), Height - Tema.S(12));
-            Tema.YuzenKart(g, r, Tema.S(16), secili ? Color.FromArgb(246, 251, 254) : Renk.Yuzey, kalkma);
-            if (secili) using (var pen = new Pen(Renk.Mavi, Tema.S(2))) using (var yol = Tema.Yuvarlak(RectangleF.Inflate(r, -1, -1), Tema.S(15))) g.DrawPath(pen, yol);
+            Tema.YuzenKart(g, r, Tema.S(14), secili ? Color.FromArgb(245, 250, 254) : Renk.Yuzey, kalkma);
+            if (secili) using (var pen = new Pen(Renk.Mavi, Tema.S(1.5f))) using (var yol = Tema.Yuvarlak(RectangleF.Inflate(r, -0.75f, -0.75f), Tema.S(13.5f))) g.DrawPath(pen, yol);
 
             float y0;
             if (onizleme)
             {
-                var pr = new RectangleF(r.X + Tema.S(10), r.Y + Tema.S(10), r.Width - Tema.S(20), (r.Width - Tema.S(20)) * 9f / 16f);
+                var pr = new RectangleF(r.X + Tema.S(8), r.Y + Tema.S(8), r.Width - Tema.S(16), (r.Width - Tema.S(16)) * 9f / 16f);
                 onizlemeAlan = pr;
-                using (var yol = Tema.Yuvarlak(pr, Tema.S(10)))
+                using (var yol = Tema.Yuvarlak(pr, Tema.S(8)))
                 {
                     var eski = g.Clip; g.SetClip(yol, System.Drawing.Drawing2D.CombineMode.Intersect);
                     if (OnizlemeVar)
@@ -160,7 +160,7 @@ namespace Sem.Yonetici
                     }
                     else
                     {
-                        using (var b = new SolidBrush(p.Acik ? Color.FromArgb(244, 241, 235) : Color.FromArgb(238, 235, 229))) g.FillRectangle(b, pr);
+                        using (var b = new SolidBrush(p.Acik ? Color.FromArgb(243, 243, 240) : Color.FromArgb(237, 237, 233))) g.FillRectangle(b, pr);
                         Tema.IkonCiz(g, p.Acik ? Ik.Kamera : p.Ikon, 20f, Renk.Acik(Renk.Yazi3, 150), new RectangleF(pr.X, pr.Y - Tema.S(10), pr.Width, pr.Height));
                         string m = p.Acik ? (p.OnizlemeHata != "" ? p.OnizlemeHata : "Görüntü bekleniyor…") : KapaliYazi();
                         Tema.YaziCiz(g, m, Tema.Yazi(8.5f), Renk.Yazi3, new RectangleF(pr.X + Tema.S(10), pr.Y + pr.Height / 2 + Tema.S(14), pr.Width - Tema.S(20), Tema.S(18)), StringAlignment.Center);
@@ -168,7 +168,7 @@ namespace Sem.Yonetici
                     g.Clip = eski;
                 }
                 SecimDairesi(g, new RectangleF(pr.Right - Tema.S(30), pr.Y + Tema.S(8), Tema.S(22), Tema.S(22)), true);
-                y0 = pr.Bottom + Tema.S(12);
+                y0 = pr.Bottom + Tema.S(10);
             }
             else
             {
@@ -177,13 +177,13 @@ namespace Sem.Yonetici
                 y0 = r.Y + Tema.S(14);
             }
 
-            float x = r.X + Tema.S(14);
-            Tema.IkonCiz(g, p.Ikon, 12f, p.Acik ? Renk.Yazi2 : Renk.Yazi3, new RectangleF(x - Tema.S(3), y0, Tema.S(24), Tema.S(24)));
-            AdCiz(g, Tema.YaziKalin(11f), x + Tema.S(26), y0, r.Right - x - Tema.S(26) - Tema.S(onizleme ? 12 : 44), Tema.S(24));
-            Tema.YaziCiz(g, AltYazi(), Tema.Yazi(8.75f), Renk.Yazi3, new RectangleF(x + Tema.S(26), y0 + Tema.S(23), r.Right - x - Tema.S(40), Tema.S(18)));
+            float x = r.X + Tema.S(12);
+            Tema.IkonCiz(g, p.Ikon, 11f, p.Acik ? Renk.Yazi2 : Renk.Yazi3, new RectangleF(x - Tema.S(3), y0, Tema.S(22), Tema.S(22)));
+            AdCiz(g, Tema.YaziKalin(10f), x + Tema.S(22), y0, r.Right - x - Tema.S(22) - Tema.S(onizleme ? 12 : 44), Tema.S(22));
+            Tema.YaziCiz(g, AltYazi(), Tema.Yazi(8.25f), Renk.Yazi3, new RectangleF(x + Tema.S(22), y0 + Tema.S(20), r.Right - x - Tema.S(36), Tema.S(17)));
 
-            float y2 = y0 + Tema.S(48), yarim = (r.Width - Tema.S(28)) / 2f;
-            var kucuk = Tema.Yazi(8.75f);
+            float y2 = y0 + Tema.S(42), yarim = (r.Width - Tema.S(28)) / 2f;
+            var kucuk = Tema.Yazi(8.25f);
             if (p.Acik && d != null)
             {
                 Bilgi(g, Ik.Guc, d["kapanma"], x, y2, yarim, kucuk);
@@ -326,18 +326,18 @@ namespace Sem.Yonetici
         {
             Etiket = etiket; Ikon = ikon; Ton = ton;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
-            BackColor = Color.Transparent; Size = Tema.S(220, 84); Margin = Tema.Pd(0, 0, 14, 0);
+            BackColor = Color.Transparent; Size = Tema.S(200, 72); Margin = Tema.Pd(0, 0, 12, 0);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics; Tema.Kaliteli(g);
-            Tema.YuzenKart(g, new RectangleF(Tema.S(2), Tema.S(1), Width - Tema.S(4), Height - Tema.S(8)), Tema.S(16), Renk.Yuzey, 0);
-            var d = new RectangleF(Tema.S(18), (Height - Tema.S(6) - Tema.S(42)) / 2f, Tema.S(42), Tema.S(42));
+            Tema.YuzenKart(g, new RectangleF(Tema.S(2), Tema.S(1), Width - Tema.S(4), Height - Tema.S(8)), Tema.S(14), Renk.Yuzey, 0);
+            var d = new RectangleF(Tema.S(16), (Height - Tema.S(6) - Tema.S(36)) / 2f, Tema.S(36), Tema.S(36));
             using (var b = new SolidBrush(Renk.Acik(Ton, 26))) g.FillEllipse(b, d);
-            Tema.IkonCiz(g, Ikon, 15f, Ton, d);
-            Tema.YaziCiz(g, Deger, Tema.YaziKalin(17f), Renk.Yazi, new RectangleF(Tema.S(74), Tema.S(12), Width - Tema.S(84), Tema.S(34)));
-            Tema.YaziCiz(g, Etiket, Tema.Yazi(9f), Renk.Yazi2, new RectangleF(Tema.S(75), Tema.S(44), Width - Tema.S(84), Tema.S(22)));
+            Tema.IkonCiz(g, Ikon, 13f, Ton, d);
+            Tema.YaziCiz(g, Deger, Tema.YaziKalin(14f), Renk.Yazi, new RectangleF(Tema.S(64), Tema.S(9), Width - Tema.S(72), Tema.S(28)));
+            Tema.YaziCiz(g, Etiket, Tema.Yazi(8.5f), Renk.Yazi2, new RectangleF(Tema.S(65), Tema.S(36), Width - Tema.S(72), Tema.S(20)));
         }
     }
 
@@ -353,7 +353,7 @@ namespace Sem.Yonetici
         {
             Text = metin; this.ikon = ikon;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
-            BackColor = Color.Transparent; Cursor = Cursors.Hand; Height = Tema.S(42);
+            BackColor = Color.Transparent; Cursor = Cursors.Hand; Height = Tema.S(38);
         }
 
         protected override void OnMouseEnter(EventArgs e) { uzerinde = true; Invalidate(); base.OnMouseEnter(e); }

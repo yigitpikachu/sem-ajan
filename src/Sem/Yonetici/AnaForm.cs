@@ -511,6 +511,12 @@ namespace Sem.Yonetici
                                 p.SonIslem = d["son"];
                             }
                             if (DuyuruGecmisi.OkunanlariIsle(p.Ad, d["okunan"])) duyuruDegisti = true;
+                            // Verilen ad, grup ve simge bilgisayara da yazılsın (paylaşımda ve duvar kâğıdında görünür).
+                            if (d.Alan.ContainsKey("gorunen") && (d["gorunen"] != p.GorunenAd || d["grup"] != p.Grup || d["simge"] != p.Simge))
+                            {
+                                var km = new Mesaj("KIMLIK"); km["gorunen"] = p.GorunenAd; km["grup"] = p.Grup; km["simge"] = p.Simge;
+                                try { Baglanti.Gonder(p.Ip, km, 3000); } catch { }
+                            }
                         }
                         catch (Exception e)
                         {
@@ -872,21 +878,28 @@ namespace Sem.Yonetici
         void DuvarKagidi()
         {
             var h = Hedefler(); if (h == null) return;
-            int s = MK.Secim(this, "Duvar kâğıdı", "Seçili bilgisayarlara hangi duvar kâğıdı uygulansın? Biri değiştirirse program geri getirir.",
-                ("Sem logolu duvar kâğıdı", "Kurumun hazır duvar kâğıdı", Ik.Ev),
+            int s = MK.Secim(this, "Duvar kâğıdı", "Seçili bilgisayarların duvar kâğıdı ve kilit ekranı. Biri değiştirirse program geri getirir.",
+                ("Otomatik", "Mevsime göre değişir, özel günlerde (23 Nisan, 2 Nisan, 24 Kasım…) o güne özel tasarım", Ik.Parilti),
+                ("Kurumsal", "Sade, logolu tasarım", Ik.Ev),
                 ("Bilgisayardan resim seç…", "JPG, PNG ya da BMP", Ik.Resim));
-            byte[] veri;
-            if (s == 0)
-                using (var r = typeof(AnaForm).Assembly.GetManifestResourceStream("duvar.png"))
-                using (var ms = new MemoryStream()) { r.CopyTo(ms); veri = ms.ToArray(); }
-            else if (s == 1)
+            if (s < 0) return;
+            if (s == 2)
+            {
+                byte[] veri;
                 using (var o = new OpenFileDialog { Filter = "Resimler|*.jpg;*.jpeg;*.png;*.bmp", Title = "Duvar kâğıdı seçin" })
                 {
                     if (o.ShowDialog(this) != DialogResult.OK) return;
                     veri = File.ReadAllBytes(o.FileName);
                 }
-            else return;
-            Uygula("Duvar kâğıdı", h, p => { var m = new Mesaj("DUVAR") { Veri = veri }; m["koru"] = "1"; return m; }, 30000);
+                Uygula("Duvar kâğıdı", h, p => { var m = new Mesaj("DUVAR") { Veri = veri }; m["koru"] = "1"; m["kilit"] = "1"; return m; }, 30000);
+                return;
+            }
+            int o2 = MK.Secim(this, "Bilgisayarın adı", "Tasarımın sağ üst köşesinde bilgisayara verdiğiniz ad (ör. \"Terapi 2\") görünsün mü?",
+                ("Adıyla birlikte", "Sorun bildirirken hangi bilgisayar olduğu karışmaz", Ik.Etiket),
+                ("Sadece tasarım", "Köşede ad yazmaz", Ik.Resim));
+            if (o2 < 0) return;
+            string kip = s == 0 ? "otomatik" : "kurumsal";
+            Uygula("Duvar kâğıdı: " + (s == 0 ? "otomatik" : "kurumsal"), h, p => { var m = new Mesaj("DUVAR_TASARIM"); m["kip"] = kip; m["oda"] = o2 == 0 ? "1" : "0"; m["kilit"] = "1"; m["koru"] = "1"; return m; }, 30000);
         }
 
         /// <summary>
@@ -1104,9 +1117,12 @@ namespace Sem.Yonetici
         {
             var bu = BuPc()?.SonDurum;
             string eskiSaat = bu?["sabah_saat"] ?? "", eskiGun = bu?["sabah_gunler"] ?? "";
-            using (var f = new AyarlarForm(YonetimAyar.Oku(), eskiSaat, eskiGun))
+            bool eskiPay = bu == null || bu["paylasim"] != "0", eskiTel = bu == null || bu["telefon"] != "0";
+            using (var f = new AyarlarForm(YonetimAyar.Oku(), eskiSaat, eskiGun, eskiPay, eskiTel))
             {
                 if (f.ShowDialog(this) != DialogResult.OK) return;
+                if (f.Paylasim != eskiPay || f.Telefon != eskiTel)
+                    Uygula("Paylaşım ayarı", AcikHedefler(true), p => { var m = new Mesaj("AYAR"); m["paylasim"] = f.Paylasim ? "1" : "0"; m["telefon"] = f.Telefon ? "1" : "0"; return m; });
                 ayarlar = f.Ayar; ayarlar.Yaz();
                 OzellikleriUygula();
                 if (ayarlar.Onizleme) OnizlemeYenile();

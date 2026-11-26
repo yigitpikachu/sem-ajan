@@ -26,16 +26,49 @@ namespace Sem.Ajan
         readonly object yazKilit = new object();
         UyariForm uyari;
         string duvarYolu; bool duvarKoru;
+        string duvarKip = "", duvarOda = ""; DateTime duvarGunu;
         readonly System.Windows.Forms.Timer duvarBekci;
+        NotifyIcon tepsi;
+        string kokKlasor = "";
 
         public Ekran()
         {
             gizli = new Form { ShowInTaskbar = false, WindowState = FormWindowState.Minimized, Opacity = 0 };
             var _ = gizli.Handle; // pencere kolu oluşsun ki başka iş parçacığından BeginInvoke yapılabilsin
             duvarBekci = new System.Windows.Forms.Timer { Interval = 60000 };
-            duvarBekci.Tick += (s, e) => DuvarKontrol(false);
+            duvarBekci.Tick += (s, e) => { if (duvarKip != "" && duvarGunu != DateTime.Today) DuvarCiz(); DuvarKontrol(false); };
             duvarBekci.Start();
             new Thread(Dongu) { IsBackground = true }.Start();
+            try { GonderMenusu(); } catch { }
+        }
+
+        /// <summary>Dosyaya sağ tık > Gönder > "Sem Paylaş".</summary>
+        static void GonderMenusu()
+        {
+            var k = Environment.GetFolderPath(Environment.SpecialFolder.SendTo);
+            if (string.IsNullOrEmpty(k)) return;
+            var lnk = Path.Combine(k, "Sem Paylaş.lnk");
+            if (!File.Exists(lnk)) Kurulum.KisayolOlustur(lnk, Application.ExecutablePath, "/paylas", "Dosyaları bilgisayarlara ve telefonlara gönder");
+        }
+
+        static void PaylasAc() { try { System.Diagnostics.Process.Start(Application.ExecutablePath, "/paylas"); } catch { } }
+
+        void KlasorAc(string k)
+        {
+            try { if (Directory.Exists(k)) System.Diagnostics.Process.Start("explorer.exe", "\"" + k + "\""); } catch { }
+        }
+
+        void TepsiAyarla(bool acik)
+        {
+            if (!acik) { if (tepsi != null) { tepsi.Visible = false; tepsi.Dispose(); tepsi = null; } return; }
+            if (tepsi != null) return;
+            tepsi = new NotifyIcon { Text = "Sem Paylaş: dosya gönder", Visible = true };
+            try { tepsi.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+            var m = new ContextMenuStrip();
+            m.Items.Add("Dosya gönder…", null, (s, e) => PaylasAc());
+            m.Items.Add("Sem Dosyalar klasörünü aç", null, (s, e) => KlasorAc(kokKlasor));
+            tepsi.ContextMenuStrip = m;
+            tepsi.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) PaylasAc(); };
         }
 
         void Dongu()
@@ -93,13 +126,52 @@ namespace Sem.Ajan
                     uyari?.IptalSonucu(p[1] == "1");
                     break;
                 case "DUVAR":
+                    duvarKip = "";
                     duvarYolu = p[1]; duvarKoru = p.Length > 2 && p[2] == "1";
                     DuvarKontrol(true);
                     break;
-                case "DOSYA":
-                    new BildirimForm("Yeni dosya geldi", p[1] + "\nMasaüstünde 'Sem Gelen Dosyalar' klasöründe.", Ik.Klasor, Renk.Turuncu).Show();
+                case "DUVAR_CIZ":
+                    duvarKip = p[1]; duvarOda = p.Length > 2 ? p[2] : ""; duvarKoru = p.Length > 3 && p[3] == "1";
+                    DuvarCiz();
                     break;
+                case "DOSYA":
+                    new BildirimForm("Yeni dosya geldi", p[1], Ik.Klasor, Renk.Mavi).Show();
+                    break;
+                case "PAYLASIM":
+                    kokKlasor = p.Length > 2 ? p[2] : "";
+                    TepsiAyarla(p[1] == "1");
+                    break;
+                case "SOR":
+                {
+                    var id = p[1]; int sn; int.TryParse(p.Length > 5 ? p[5] : "90", out sn);
+                    new SoruKarti(p[2], p[3], p[4], sn, c => Gonder("CEVAP", id, c.ToString())).Show();
+                    break;
+                }
+                case "METIN":
+                    new MetinKarti(p[1], p[2]).Show();
+                    break;
+                case "GELDI":
+                {
+                    string kimden = p[1], adet = p[2], klasor = p[3], ad = p.Length > 4 ? p[4] : "";
+                    new BildirimForm(kimden + " dosya gönderdi", (ad != "" ? ad : adet + " dosya") + "\nAçmak için tıklayın", Ik.KlasorAc, Renk.Mavi, () => KlasorAc(klasor)).Show();
+                    break;
+                }
+                case "YAZDIR":
+                {
+                    string yol = p[1], kimden = p.Length > 2 ? p[2] : "";
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        var hata = Yazdirici.Yazdir(yol);
+                        gizli.BeginInvoke((Action)(() =>
+                        {
+                            if (hata == null) new BildirimForm("Yazdırılıyor", kimden + ": " + Path.GetFileName(yol), Ik.YaziciIk, Renk.Mavi).Show();
+                            else new BildirimForm("Yazdırılamadı", Path.GetFileName(yol) + "\n" + hata, Ik.Uyari, Renk.Pembe, () => KlasorAc(Path.GetDirectoryName(yol))).Show();
+                        }));
+                    });
+                    break;
+                }
                 case "CIK":
+                    TepsiAyarla(false);
                     Environment.Exit(0);
                     break;
                 case "KILITLE":
@@ -138,6 +210,26 @@ namespace Sem.Ajan
                 }
             }
             catch { Gonder("RESIM", id, "", "Ekran kilitli ya da görüntü alınamadı"); }
+        }
+
+        /// <summary>Tasarımı bu ekranın çözünürlüğünde çizer ve uygular (otomatik kipte her gün yenilenir).</summary>
+        void DuvarCiz()
+        {
+            try
+            {
+                duvarGunu = DateTime.Today;
+                var k = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sem");
+                Directory.CreateDirectory(k);
+                var yol = Path.Combine(k, "duvar_" + duvarKip + "_" + DateTime.Now.ToString("yyyyMMdd") + ".png");
+                var b = Screen.PrimaryScreen.Bounds;
+                using (var logo = Tema.Logo())
+                using (var bmp = Duvar.Ciz(Duvar.Sec(duvarKip, DateTime.Now), Math.Max(800, b.Width), Math.Max(600, b.Height), duvarOda, logo))
+                    bmp.Save(yol, ImageFormat.Png);
+                foreach (var f in Directory.GetFiles(k, "duvar_*.png")) if (!f.Equals(yol, StringComparison.OrdinalIgnoreCase)) try { File.Delete(f); } catch { }
+                duvarYolu = yol;
+                DuvarKontrol(true);
+            }
+            catch { }
         }
 
         void DuvarKontrol(bool zorla)

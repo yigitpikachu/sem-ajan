@@ -17,10 +17,18 @@ Sem Özel Eğitim ve Rehabilitasyon Merkezi'ndeki bilgisayarları tek yerden yö
 
 **Duyuru ve dosya**
 - Ekranın ortasında duyuru; kimin "Tamam"a bastığı Duyurular sayfasında görünür
-- Dosya gönderme (masaüstündeki "Sem Gelen Dosyalar" klasörüne) ve bilgisayardan dosya alma
+- Dosya gönderme ve bilgisayardan dosya alma; gelenler masaüstündeki "Sem Dosyalar\Gelen" klasörüne düşer
+
+**Sem Paylaş**
+- Bilgisayarlar arasında ve telefonlarla dosya ve yazı paylaşımı (telefonda LocalSend uygulamasıyla, aynı Wi-Fi'de)
+- Saat yanındaki simge, sağ tık > Gönder > Sem Paylaş, ya da dosyaları masaüstündeki "Sem Paylaş" simgesine bırakma
+- Yönetici bilgisayarından gelenler doğrudan alınır, diğerleri için Kabul/Reddet sorulur
+- Masaüstünde "Sem Dosyalar": Gelen (gönderene göre klasörlü), Gönderilen, Ortak
+- Ortak klasör: yönetici masaüstündeki "Sem Ortak" klasörü tüm bilgisayarlara kendiliğinden kopyalanır
+- Telefondan yazdır: yönetici bilgisayarı telefonlarda "Sem Yazıcı" olarak görünür, gönderilen fotoğraf ve PDF onayla yazıcıdan çıkar
 
 **Bakım**
-- Kurum logolu duvar kâğıdı (değiştirilirse geri gelir)
+- Kurumsal, mevsimlik ve özel günlere göre kendiliğinden değişen duvar kâğıdı ve kilit ekranı, istenirse oda adıyla (değiştirilirse geri gelir)
 - Yazıcı kurma (yönetici bilgisayarındaki Canon sürücüsü diğerlerine aynen kurulur) ve yazıcı onarma, sessiz program kurma
 - GitHub üzerinden doğrulamalı otomatik güncelleme
 
@@ -45,6 +53,7 @@ Kurulumdan sonra program Windows ile birlikte arka planda kendiliğinden başlar
 - C# / .NET Framework 4.8 (Windows 10 ve 11'de hazır gelir), WinForms
 - Arka planda `SemAjan` Windows hizmeti; kullanıcı ekranındaki pencereler `Sem.exe /ekran`, yönetim paneli `Sem.exe /yonetim` ile açılır
 - İletişim: TCP 47800 (AES-256 + HMAC-SHA256, anahtar şifreden PBKDF2 ile), keşif: UDP 47802
+- Telefon paylaşımı: LocalSend v2 protokolü (HTTP 53317, çoklu yayın 224.0.0.167)
 - Derleme: `dotnet build src/Sem/Sem.csproj -c Release`
 - İkonlar: [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) (MIT)
 

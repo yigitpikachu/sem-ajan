@@ -613,12 +613,13 @@ namespace Sem.Yonetici
     {
         public readonly YonetimAyar Ayar;
         public string SabahSaat = "", SabahGunler = "";
-        readonly Anahtar onizleme, dosya, yazici, program, duvar, duyuru, sabah;
+        public bool Paylasim, Telefon;
+        readonly Anahtar onizleme, dosya, yazici, program, duvar, duyuru, sabah, paylasim, telefon;
         readonly Giris saat;
         readonly Buton[] gunler = new Buton[7];
         readonly Label sabahNot;
 
-        public AyarlarForm(YonetimAyar mevcut, string sabahSaat, string sabahGunler) : base("Ayarlar", 520, 720)
+        public AyarlarForm(YonetimAyar mevcut, string sabahSaat, string sabahGunler, bool paylasimAcik = true, bool telefonAcik = true) : base("Ayarlar", 520, 900)
         {
             int g = Icerik.Width;
             Ayar = mevcut;
@@ -669,6 +670,20 @@ namespace Sem.Yonetici
             sabah.Degisti += (s, e) => SabahEtkin();
             SabahEtkin();
 
+            y += Tema.S(80);
+            var ust3 = Yazi.UstBaslik("Paylaşım", Renk.Yazi3); ust3.Location = new Point(0, y);
+            Icerik.Controls.Add(ust3);
+            y += Tema.S(24);
+            paylasim = new Anahtar("Bilgisayarlar arası dosya paylaşımı", "") { Location = new Point(0, y), Width = g, Acik = paylasimAcik };
+            Icerik.Controls.Add(paylasim); y += Tema.S(36);
+            telefon = new Anahtar("Telefonlardan dosya kabul et (LocalSend)", "") { Location = new Point(0, y), Width = g, Acik = telefonAcik };
+            Icerik.Controls.Add(telefon); y += Tema.S(40);
+            var pnot = Yazi.Etiket("Telefondaki LocalSend uygulaması bilgisayarları adlarıyla görür. Bu bilgisayar telefonlarda \"Sem Yazıcı\" olarak görünür: gönderilen fotoğraf ve PDF'ler yazıcıdan çıkar.", 9f, false, Renk.Yazi2, false);
+            pnot.SetBounds(0, y, g, Tema.S(52));
+            Icerik.Controls.Add(pnot);
+            paylasim.Degisti += (s, e) => { telefon.Enabled = paylasim.Acik; telefon.Invalidate(); };
+            telefon.Enabled = paylasim.Acik;
+
             var ok = Diyalog.AltDugmeler(this, "Kaydet", ButonTuru.Birincil, Ik.Tik);
             ok.Click += (s, e) =>
             {
@@ -680,6 +695,7 @@ namespace Sem.Yonetici
                 Ayar.Duvar = duvar.Acik; Ayar.Duyurular = duyuru.Acik; Ayar.Sabah = sabah.Acik;
                 SabahSaat = sabah.Acik ? TimeSpan.Parse(saat.Text).ToString(@"hh\:mm") : "";
                 SabahGunler = string.Join(",", gs);
+                Paylasim = paylasim.Acik; Telefon = telefon.Acik;
                 DialogResult = DialogResult.OK; Close();
             };
         }
