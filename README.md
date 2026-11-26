@@ -12,7 +12,7 @@ Sem Özel Eğitim ve Rehabilitasyon Merkezi'ndeki bilgisayarları tek yerden yö
 - Dosya gönderme ve bilgisayardan dosya alma
 - Uzaktan kapatma, yeniden başlatma, kilitleme, ağdan açma (Wake-on-LAN)
 - Yazıcı sürücüsü kurma ve yazıcı onarma, program kurma
-- GitHub üzerinden imzalı online güncelleme
+- GitHub üzerinden doğrulamalı online güncelleme
 
 ## İndirme
 
@@ -23,15 +23,11 @@ En son sürüm: [Releases](../../releases/latest) sayfasından **Sem.exe**.
 - C# / .NET Framework 4.8 (Windows 10 ve 11'de hazır gelir), WinForms
 - Arka planda `SemAjan` Windows hizmeti olarak çalışır; kullanıcı ekranındaki pencereler `Sem.exe /ekran` ile açılır
 - Bilgisayarlar arası iletişim: TCP 47800 (AES-256 + HMAC-SHA256, anahtar yönetici şifresinden PBKDF2 ile türetilir), keşif: UDP 47802
-- Sürümler `v*` etiketiyle GitHub Actions tarafından derlenir ve RSA-3072 ile imzalanır (`.github/workflows/surum.yml`). Programlar yalnızca bu imzayı taşıyan güncellemeleri kurar.
+- Sürümler `v*` etiketiyle GitHub Actions tarafından derlenir (`.github/workflows/surum.yml`). Programlar yalnızca bu iş akışının yüklediği, SHA-256 özeti, ürün adı ve sürüm numarası tutan Sem.exe'yi kurar. Depoya yazma yetkisi güncelleme yetkisi demektir: GitHub hesabında iki adımlı doğrulama açık olmalı.
 - İkonlar: [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) (MIT)
-
-## İmza anahtarı (bir kez)
-
-Yönetici bilgisayarında PowerShell'de `tools/anahtar-olustur.ps1` çalıştırılır. Gizli anahtar panoya kopyalanır ve depoda **Settings → Secrets and variables → Actions** altında `SEM_IMZA_ANAHTARI` adıyla kaydedilir; hiçbir dosyaya yazılmaz. Masaüstüne düşen açık anahtar `src/Sem/Guncelleme.cs` içindeki `AcikAnahtar` değerine konur.
 
 ## Yeni sürüm yayınlama
 
 1. `src/Sem/Sem.csproj` içindeki `<Version>` değerini artırın, `docs/surum-notlari/vX.Y.Z.md` dosyasına notları yazın.
 2. `git tag vX.Y.Z && git push origin vX.Y.Z`
-3. GitHub Actions derleyip imzalar ve Release'i yayınlar. Bilgisayarlar birkaç saat içinde kendiliğinden güncellenir ya da Sem Ajan → Güncellemeler'den hemen dağıtılabilir.
+3. GitHub Actions derler ve Release'i yayınlar. Bilgisayarlar birkaç saat içinde kendiliğinden güncellenir ya da Sem Ajan → Güncellemeler'den hemen dağıtılabilir.

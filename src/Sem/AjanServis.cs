@@ -100,7 +100,7 @@ namespace Sem.Ajan
                 {
                     var s = Guncelleme.SonSurum();
                     if (!s.YeniMi) return;
-                    var exe = Guncelleme.Indir(s); // imza doğrulanır
+                    var exe = Guncelleme.Indir(s); // özet ve sürüm doğrulanır
                     Gunluk.Yaz("Yeni sürüm bulundu: " + s.Etiket);
                     GuncellemeBaslat(exe);
                 }

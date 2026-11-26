@@ -422,7 +422,7 @@ namespace Sem.Yonetici
             dagit.Click += (s, e) => Dagit();
             Icerik.Controls.Add(dagit);
 
-            var oto = new Anahtar("Otomatik güncelleme", "Bilgisayarlar yeni sürümü günde birkaç kez kendileri denetler ve imzası doğruysa kurar.") { Location = new Point(0, Tema.S(326)), Width = g, Acik = otoAcik };
+            var oto = new Anahtar("Otomatik güncelleme", "Bilgisayarlar yeni sürümü günde birkaç kez kendileri denetler ve doğrulandıysa kurar.") { Location = new Point(0, Tema.S(326)), Width = g, Acik = otoAcik };
             oto.Degisti += (s, e) => OtoGuncelle = oto.Acik;
             Icerik.Controls.Add(oto);
 
@@ -474,7 +474,7 @@ namespace Sem.Yonetici
             {
                 try
                 {
-                    var exe = Guncelleme.Indir(bulunan); // imza burada doğrulanır
+                    var exe = Guncelleme.Indir(bulunan); // özet ve sürüm burada doğrulanır
                     BeginInvoke((Action)(() => { Exe = exe; YeniSurum = bulunan.Numara.ToString(); DialogResult = DialogResult.OK; Close(); }));
                 }
                 catch (Exception e)

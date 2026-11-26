@@ -1,5 +1,5 @@
-# Yeni bir "v1.2.3" etiketi gönderildiğinde Sem.exe'yi derler, gizli anahtarla imzalar ve GitHub Release olarak yayınlar.
-# Bilgisayarlardaki Sem Ajan, sadece bu imzayı taşıyan sürümleri kurar.
+# Yeni bir "v1.2.3" etiketi gönderildiğinde Sem.exe'yi derler ve GitHub Release olarak yayınlar.
+# Bilgisayarlardaki Sem Ajan yalnızca bu iş akışının yüklediği Sem.exe'yi kabul eder.
 name: Sürüm yayınla
 
 on:
@@ -24,13 +24,6 @@ jobs:
           SURUM="${GITHUB_REF_NAME#v}"
           dotnet build src/Sem/Sem.csproj -c Release -p:Version="$SURUM"
           cp src/Sem/bin/Release/net48/Sem.exe Sem.exe
-
-      - name: İmzala
-        env:
-          SEM_IMZA_ANAHTARI: ${{ secrets.SEM_IMZA_ANAHTARI }}
-        run: |
-          pip install --quiet cryptography
-          python3 tools/imzala.py Sem.exe Sem.exe.sig
           sha256sum Sem.exe
 
       - name: Yayınla
@@ -39,7 +32,7 @@ jobs:
         run: |
           NOT="docs/surum-notlari/${GITHUB_REF_NAME}.md"
           if [ -f "$NOT" ]; then
-            gh release create "$GITHUB_REF_NAME" Sem.exe Sem.exe.sig --title "Sem Ajan ${GITHUB_REF_NAME}" --notes-file "$NOT"
+            gh release create "$GITHUB_REF_NAME" Sem.exe --title "Sem Ajan ${GITHUB_REF_NAME}" --notes-file "$NOT"
           else
-            gh release create "$GITHUB_REF_NAME" Sem.exe Sem.exe.sig --title "Sem Ajan ${GITHUB_REF_NAME}" --generate-notes
+            gh release create "$GITHUB_REF_NAME" Sem.exe --title "Sem Ajan ${GITHUB_REF_NAME}" --generate-notes
           fi

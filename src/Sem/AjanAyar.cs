@@ -26,7 +26,7 @@ namespace Sem.Ajan
         public string BugunKapatmaTarihi = ""; // yyyy-MM-dd: o gün otomatik kapanma yapılmaz
         public bool DuvarKoru = true;
         public bool OtomatikKapanma = true; // yönetici bilgisayarında kapalı
-        public bool OtoGuncelle = true;     // GitHub'dan imzalı yeni sürümü kendisi kursun
+        public bool OtoGuncelle = true;     // GitHub'dan doğrulanmış yeni sürümü kendisi kursun
 
         public static AjanAyar Oku()
         {

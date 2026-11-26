@@ -1,5 +1,6 @@
-// Online güncelleme: GitHub'daki son sürümü bulur, indirir ve imzasını doğrular.
-// Sürümler GitHub Actions tarafından gizli bir anahtarla imzalanır; imzası tutmayan dosya asla kurulmaz.
+// Online güncelleme: GitHub'daki son sürümü bulur, indirir ve doğrular.
+// Yalnızca GitHub Actions'ın depodaki koddan derleyip yüklediği Sem.exe kabul edilir; indirilen dosyanın
+// SHA-256 özeti GitHub'ın bildirdiği özetle, ürün adı ve sürüm numarası da sürüm etiketiyle tutmalıdır.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,11 +15,10 @@ namespace Sem.Ortak
     public static class Guncelleme
     {
         public const string Depo = "yigitpikachu/sem-ajan";
-        const string AcikAnahtar = "<RSAKeyValue><Modulus>vHCBRECiuxbDP4O0es31nK2UmQTOGtgFj3om650AFCPUsZEFTtG/4wUbnsLyq1bau1YoYRqv/pRUv2Plbdddjx5e7E6qG++5lpS0gEcPLIze8v+8rN5jvk60kDddCJOhsKR6+argV63sJzldRqjHbeN6tlOAof2dmcXr9Cyy6dzvs3HSEkjN27zLiIVQcMxDxVDLTyc188rOUl5Bw27Ci67tFXC7+E3LjY8Ij1wrsqaSDIOkJXkBjxA1b/qlh1w6Qf/BZfeVmBN+DzOrDr4aM0ARad+CndKS/kLwE22YG0Xjx5ytxjaNmz3x0IutahCQ/jpKMyZGHztHPjnb0oE/+sL1avKBb0ylzOjZ5e4DtvkC6S4Y2DyKWlYADZJ+t9qt4IuPaH7Y8V4dmboP5LC921fBpMQdpS7uhKcko37BgN4/dRarEkVcHuY9O9Zm4dBTT1AupITIKIWv3M3M40Dv2orx7P+jB3fLJAmePJyINQd5HPqJr0OlAaIU0fVdNGkH</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>";
 
         public class Surum
         {
-            public string Etiket = "", Notlar = "", ExeAdres = "", ImzaAdres = "";
+            public string Etiket = "", Notlar = "", ExeAdres = "", Ozet = "";
             public Version Numara;
             public bool YeniMi => Numara != null && Numara > Version.Parse(Sabitler.Surum);
         }
@@ -45,35 +45,40 @@ namespace Sem.Ortak
                 if (Version.TryParse(s.Etiket.TrimStart('v', 'V'), out v)) s.Numara = v;
                 foreach (Dictionary<string, object> a in (object[])d["assets"])
                 {
-                    var ad = a["name"] as string; var url = a["browser_download_url"] as string;
-                    if (ad == "Sem.exe") s.ExeAdres = url;
-                    else if (ad == "Sem.exe.sig") s.ImzaAdres = url;
+                    if (a["name"] as string != "Sem.exe") continue;
+                    var yukleyen = a.ContainsKey("uploader") ? a["uploader"] as Dictionary<string, object> : null;
+                    if (yukleyen == null || yukleyen["login"] as string != "github-actions[bot]") continue; // elle yüklenen dosya kabul edilmez
+                    s.ExeAdres = a["browser_download_url"] as string ?? "";
+                    var oz = a.ContainsKey("digest") ? a["digest"] as string ?? "" : "";
+                    if (oz.StartsWith("sha256:")) s.Ozet = oz.Substring(7).ToLowerInvariant();
                 }
-                if (s.ExeAdres == "" || s.ImzaAdres == "") throw new Exception("Sürüm dosyaları eksik");
+                if (s.ExeAdres == "" || s.Numara == null) throw new Exception("Sürüm dosyaları eksik");
                 return s;
             }
         }
 
-        /// <summary>Sürümü indirir; imza doğru değilse hata verir.</summary>
+        /// <summary>Sürümü indirir; doğrulanamazsa hata verir.</summary>
         public static byte[] Indir(Surum s)
         {
-            using (var w = Istemci())
+            byte[] exe;
+            using (var w = Istemci()) exe = w.DownloadData(s.ExeAdres);
+            if (s.Ozet != "")
             {
-                var exe = w.DownloadData(s.ExeAdres);
-                var imza = Convert.FromBase64String(Encoding.ASCII.GetString(w.DownloadData(s.ImzaAdres)).Trim());
-                if (!ImzaDogruMu(exe, imza)) throw new CryptographicException("İndirilen dosyanın imzası geçersiz, güncelleme yapılmadı");
-                return exe;
+                string oz;
+                using (var h = SHA256.Create()) oz = BitConverter.ToString(h.ComputeHash(exe)).Replace("-", "").ToLowerInvariant();
+                if (oz != s.Ozet) throw new CryptographicException("İndirilen dosya bozuk, güncelleme yapılmadı");
             }
-        }
-
-        public static bool ImzaDogruMu(byte[] veri, byte[] imza)
-        {
-            using (var rsa = new RSACryptoServiceProvider())
+            var tmp = Path.Combine(Path.GetTempPath(), "sem_surum_" + Guid.NewGuid().ToString("N") + ".exe");
+            try
             {
-                rsa.PersistKeyInCsp = false;
-                rsa.FromXmlString(AcikAnahtar);
-                return rsa.VerifyData(veri, CryptoConfig.MapNameToOID("SHA256"), imza);
+                File.WriteAllBytes(tmp, exe);
+                var b = FileVersionInfo.GetVersionInfo(tmp);
+                Version v;
+                if (b.ProductName != "Sem Ajan" || !Version.TryParse(b.FileVersion, out v) || v.Major != s.Numara.Major || v.Minor != s.Numara.Minor || Math.Max(v.Build, 0) != Math.Max(s.Numara.Build, 0))
+                    throw new CryptographicException("İndirilen dosya Sem Ajan'a ait değil, güncelleme yapılmadı");
             }
+            finally { try { File.Delete(tmp); } catch { } }
+            return exe;
         }
 
         /// <summary>Exe içindeki sürüm numarası.</summary>
