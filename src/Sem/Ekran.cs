@@ -40,6 +40,12 @@ namespace Sem.Ajan
             duvarBekci.Start();
             new Thread(Dongu) { IsBackground = true }.Start();
             try { GonderMenusu(); } catch { }
+            // Açık yönetim paneli varsa yeni sürüme geçsin (güncellemeden sonra bu taraf yeni sürümle açılır)
+            try { EventWaitHandle ys; if (EventWaitHandle.TryOpenExisting(@"Local\SemYeniSurum", out ys)) using (ys) ys.Set(); } catch { }
+            // Ana bilgisayarda Sem Ajan simgesi varken ayrı "Sem Paylaş" simgesi gösterilmez (ikisi tek simgede)
+            var simgeBekci = new System.Windows.Forms.Timer { Interval = 10000 };
+            simgeBekci.Tick += (s, e) => TepsiAyarla(paylasimAcik);
+            simgeBekci.Start();
         }
 
         /// <summary>Dosyaya sağ tık > Gönder > "Sem Paylaş".</summary>
@@ -58,8 +64,18 @@ namespace Sem.Ajan
             try { if (Directory.Exists(k)) System.Diagnostics.Process.Start("explorer.exe", "\"" + k + "\""); } catch { }
         }
 
+        bool paylasimAcik;
+
+        static bool PanelAcik()
+        {
+            try { Mutex m; if (Mutex.TryOpenExisting(@"Local\SemYonetim", out m)) { m.Dispose(); return true; } } catch (UnauthorizedAccessException) { return true; } catch { }
+            return false;
+        }
+
         void TepsiAyarla(bool acik)
         {
+            paylasimAcik = acik;
+            if (acik && PanelAcik()) acik = false;
             if (!acik) { if (tepsi != null) { tepsi.Visible = false; tepsi.Dispose(); tepsi = null; } return; }
             if (tepsi != null) return;
             tepsi = new NotifyIcon { Text = "Sem Paylaş: dosya gönder", Visible = true };

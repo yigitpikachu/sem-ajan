@@ -188,7 +188,10 @@ namespace Sem.Yonetici
             {
                 if (e.Button == MouseButtons.Left) Guvenli(TepsiPaneli);
                 else if (e.Button == MouseButtons.Right)
-                    new AcilirMenu().Ekle("Paneli aç", Ik.Ac, () => Guvenli(PaneliAc)).Ayrac().Ekle("Sem Ajan'dan çık", Ik.Kapat, Cik).ImlecteGoster(this);
+                    new AcilirMenu().Ekle("Paneli aç", Ik.Ac, () => Guvenli(PaneliAc))
+                        .Ekle("Dosya gönder…", Ik.Paylas, () => { try { Process.Start(AjanAyar.KurulumExe, "/paylas"); } catch { } })
+                        .Ekle("Sem Dosyalar klasörü", Ik.Klasor, () => { try { Process.Start("explorer.exe", "\"" + Sem.Ajan.Klasorler.Kok + "\""); } catch { } })
+                        .Ayrac().Ekle("Sem Ajan'dan çık", Ik.Kapat, Cik).ImlecteGoster(this);
             };
             tepsi.BalloonTipClicked += (s, e) => Guvenli(PaneliAc);
 
@@ -205,6 +208,17 @@ namespace Sem.Yonetici
                 Basla();
             };
             if (tepsiModu) { CreateHandle(); BeginInvoke((Action)TepsideBasla); }
+
+            // Güncellemeden sonra yeni sürümle açılan ekran tarafı "yeni sürüm var" sinyali verir: zamanlayıcıyı beklemeden geç.
+            new Thread(() =>
+            {
+                try
+                {
+                    using (var ys = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\SemYeniSurum"))
+                        while (ys.WaitOne()) { PanelKaydi("sinyal geldi"); BeginInvoke((Action)(() => { sonSurumDenetimi = DateTime.MinValue; SurumDenetle(); })); }
+                }
+                catch (Exception ex) { PanelKaydi("sinyal dinlenemedi: " + ex.Message); }
+            }) { IsBackground = true }.Start();
 
             if (gosterSinyali != null)
                 new Thread(() =>
@@ -277,6 +291,7 @@ namespace Sem.Yonetici
         {
             if (basladi) return;
             basladi = true;
+            PanelKaydi("panel başladı: " + Environment.CommandLine);
             ListeyiCiz(); SecimGuncelle(); Yenile(); yenile.Start(); onizlemeZaman.Start();
             Task.Run(() =>
             {
@@ -312,6 +327,7 @@ namespace Sem.Yonetici
 
         // ------------------------------------------------------------------ Kenarlıksız pencere
         int Kenar => Tema.S(5);
+        int KoseYaricap => Tema.S(7);
         PencereDugmeleri pencereDugmeleri;
         bool dwmYuvarlak;
         [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool ReleaseCapture();
@@ -349,7 +365,8 @@ namespace Sem.Yonetici
             if (dwmYuvarlak) return;
             // Windows 10: pencere yuvarlak şekle kesilir, kenar çizgisi yumuşatılarak çizilir
             if (tam || WindowState == FormWindowState.Minimized) { Region = null; return; }
-            using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width, Height), Tema.S(10))) { var eski = Region; Region = new Region(p); eski?.Dispose(); }
+            // Kavis kenar payının (5 px) içinde kalsın: köşeyi pencerenin kendisi yumuşak çizgiyle boyar, içerik kesilmez.
+            using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width, Height), KoseYaricap + 1)) { var eski = Region; Region = new Region(p); eski?.Dispose(); }
         }
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); MaximizedBounds = Screen.FromHandle(Handle).WorkingArea; KoseleriAyarla(); }
@@ -364,8 +381,10 @@ namespace Sem.Yonetici
             // Kenar payı: yan menünün yanı yan menü renginde, gerisi zemin renginde, kesintisiz görünsün
             using (var b = new SolidBrush(Renk.YanMenu)) g.FillRectangle(b, 0, 0, yan.Right, Height);
             Tema.Kaliteli(g);
-            using (var pen = new Pen(Renk.CizgiKoyu))
-            using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width - 1, Height - 1), Tema.S(dwmYuvarlak ? 8 : 10))) g.DrawPath(pen, p);
+            if (dwmYuvarlak) return; // Windows 11 kenarı kendi çizer
+            // Windows 10: kesik kenarın basamaklarını yumuşatan ince, kenar yumuşatmalı çizgi
+            using (var pen = new Pen(Color.FromArgb(150, Renk.CizgiKoyu), 1.2f))
+            using (var p = Tema.Yuvarlak(new RectangleF(0.6f, 0.6f, Width - 1.6f, Height - 1.6f), KoseYaricap)) g.DrawPath(pen, p);
         }
 
         protected override void WndProc(ref Message m)
@@ -425,11 +444,12 @@ namespace Sem.Yonetici
             string yeni = "";
             try
             {
-                if (!File.Exists(AjanAyar.KurulumExe)) return;
+                if (!File.Exists(AjanAyar.KurulumExe)) { PanelKaydi("exe yok: " + AjanAyar.KurulumExe); return; }
                 var v = FileVersionInfo.GetVersionInfo(AjanAyar.KurulumExe);
+                PanelKaydi("denetim: " + v.ProductName + " " + v.FileMajorPart + "." + v.FileMinorPart + "." + v.FileBuildPart + ", bu " + Sabitler.Surum + ", görünür " + Visible);
                 if (v.ProductName != "Sem Ajan" || new Version(v.FileMajorPart, v.FileMinorPart, v.FileBuildPart) <= Version.Parse(Sabitler.Surum)) return;
                 yeni = v.FileMajorPart + "." + v.FileMinorPart + "." + v.FileBuildPart;
-                if (!Visible) { YeniSurumeGec(false); return; }
+                if (!Visible) { PanelKaydi("gizli, yeni sürümle açılıyor"); YeniSurumeGec(false); return; }
                 if (yeniSurumGoruldu == null) { yeniSurumGoruldu = DateTime.Now; Kaydet("Yeni sürüm kuruldu: " + yeni + ". Panel yeni sürüme geçiyor."); }
 
                 // Yalnızca yarım kalabilecek işler beklenir: açık bir diyalog (duyuru yazma, ayarlar...) veya uzaktan kontrol.
@@ -438,7 +458,7 @@ namespace Sem.Yonetici
                 if (engel.Count > 0)
                 {
                     var adlar = string.Join(", ", engel.Select(f => string.IsNullOrWhiteSpace(f.Text) ? f.GetType().Name : f.Text));
-                    if (adlar != engelKaydi) { engelKaydi = adlar; Kaydet("Yeni sürüme geçiş bekliyor, açık pencere: " + adlar); }
+                    if (adlar != engelKaydi) { engelKaydi = adlar; Kaydet("Yeni sürüme geçiş bekliyor, açık pencere: " + adlar); PanelKaydi("bekliyor: " + adlar); }
                     yenidenBaslat = null;
                 }
                 else if (yenidenBaslat == null)
@@ -446,16 +466,37 @@ namespace Sem.Yonetici
                     yenidenBaslat = DateTime.Now.AddSeconds(5);
                     Tost("Sem Ajan " + yeni + " sürümüne geçiliyor, pencere birkaç saniye içinde yeniden açılacak.");
                 }
-                else if (DateTime.Now >= yenidenBaslat) { YeniSurumeGec(true); return; }
+                else if (DateTime.Now >= yenidenBaslat) { PanelKaydi("yeni sürümle açılıyor"); YeniSurumeGec(true); return; }
             }
             catch (Exception ex)
             {
+                PanelKaydi("hata: " + ex);
                 if (!gecisHatasiKaydedildi) { gecisHatasiKaydedildi = true; Kaydet("Yeni sürüme geçilemedi: " + ex.Message, 2); }
             }
             // 30 saniyede geçilemediyse elle yeniden açma kartı
             if (yeniSurumGoruldu != null && Visible && (DateTime.Now - yeniSurumGoruldu.Value).TotalSeconds >= 30)
                 SurumKartiGoster(yeni);
         }
+
+        string sonPanelKaydi = "";
+
+        /// <summary>Sürüm geçişi teşhisi için %LocalAppData%\Sem\panel.log (aynı satır tekrar yazılmaz, 200 KB'ı geçince sıfırlanır).</summary>
+        void PanelKaydi(string s)
+        {
+            try
+            {
+                lock (JetonKilit)
+                {
+                    if (s == sonPanelKaydi) return;
+                    sonPanelKaydi = s;
+                    var f = Path.Combine(Depo.Klasor, "panel.log");
+                    if (File.Exists(f) && new FileInfo(f).Length > 200 * 1024) File.Delete(f);
+                    File.AppendAllText(f, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + Sabitler.Surum + " pid " + Process.GetCurrentProcess().Id + "] " + s + Environment.NewLine, System.Text.Encoding.UTF8);
+                }
+            }
+            catch { }
+        }
+        static readonly object JetonKilit = new object();
 
         void SurumKartiGoster(string yeni)
         {
