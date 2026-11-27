@@ -25,14 +25,15 @@ namespace Sem.Ajan
             T("PDF", "pdf");
             T("Sunumlar", "ppt pptx pps ppsx pptm odp key");
             T("Tablolar", "xls xlsx xlsm csv ods");
-            T("Resimler", "jpg jpeg png gif bmp webp heic heif tif tiff svg");
+            T("Resimler", "jpg jpeg jfif png gif bmp webp heic heif tif tiff svg ico");
+            T("Web sayfaları", "htm html mhtml mht");
             T("Videolar", "mp4 avi mov mkv wmv m4v 3gp webm mpg mpeg");
             T("Sesler", "mp3 wav m4a ogg wma aac flac opus");
             T("Arşivler", "zip rar 7z tar gz");
         }
 
-        static readonly Regex Kopya = new Regex(@"^(?<ad>.+?)(\s\(\d+\)|\s-\s(Kopya|Copy)(\s\(\d+\))?)$", RegexOptions.IgnoreCase);
-        static readonly Regex Kurulum = new Regex(@"setup|install|kurulum|yükle|yukle|_x64|_x86", RegexOptions.IgnoreCase);
+        static readonly Regex Kurulum = new Regex(@"setup|install|kurulum|yükle|yukle|_x64|_x86|driver|sürücü|surucu|pcl6", RegexOptions.IgnoreCase);
+        static readonly Regex SurucuKlasoru = new Regex(@"driver|sürücü|surucu|drİver|pcl6", RegexOptions.IgnoreCase);
         static readonly string[] Cop = { ".tmp", ".crdownload", ".part", ".partial", ".download", ".bak", ".old" };
 
         /// <summary>Bilgisayardaki kullanıcı masaüstleri (ortak masaüstü hariç).</summary>
@@ -65,11 +66,18 @@ namespace Sem.Ajan
                 DirectoryInfo di = new DirectoryInfo(m);
                 FileSystemInfo[] ogeler;
                 try { ogeler = di.GetFileSystemInfos(); } catch { continue; }
+                ogeler = ogeler.Where(x => (x.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0).ToArray();
+                var son = SonAcilanlar(m, sinir);
+                var kopyalar = Kopyalar(ogeler.OfType<FileInfo>());
                 foreach (var o in ogeler.OrderBy(x => x is FileInfo ? 1 : 0).ThenBy(x => x.Name))
                 {
-                    if ((o.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0) continue;
                     string kod, neden, hedef = ""; long boyut = 0;
-                    try { Karar(o, sinir, out kod, out neden, out hedef, out boyut); }
+                    try
+                    {
+                        string asil;
+                        if (o is FileInfo kf && kopyalar.TryGetValue(kf.FullName, out asil)) { kod = "S"; neden = "Aynısının kopyası: " + asil; boyut = kf.Length; }
+                        else Karar(o, ogeler, son, sinir, out kod, out neden, out hedef, out boyut);
+                    }
                     catch { kod = "K"; neden = "Okunamadı"; }
                     sb.Append(kod + "|" + o.FullName + "|" + boyut + "|" + neden + "|" + hedef + "\n");
                 }
@@ -77,22 +85,56 @@ namespace Sem.Ajan
             return sb.ToString();
         }
 
-        static DateTime SonKullanim(FileSystemInfo o)
+        /// <summary>Kullanıcının "son kullanılanlar" listesine göre son günlerde açılmış dosya adları.</summary>
+        static HashSet<string> SonAcilanlar(string masaustu, DateTime sinir)
         {
-            var t = o.LastWriteTime;
-            if (o.LastAccessTime > t) t = o.LastAccessTime;
-            if (o.CreationTime > t) t = o.CreationTime;
-            return t;
+            var l = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var profil = Directory.GetParent(masaustu).FullName;
+                if (Path.GetFileName(profil).Equals("OneDrive", StringComparison.OrdinalIgnoreCase)) profil = Directory.GetParent(profil).FullName;
+                var son = Path.Combine(profil, @"AppData\Roaming\Microsoft\Windows\Recent");
+                if (Directory.Exists(son))
+                    foreach (var f in new DirectoryInfo(son).GetFiles("*.lnk"))
+                        if (f.LastWriteTime >= sinir) l.Add(Path.GetFileNameWithoutExtension(f.Name));
+            }
+            catch { }
+            return l;
         }
 
-        static void Karar(FileSystemInfo o, DateTime sinir, out string kod, out string neden, out string hedef, out long boyut)
+        /// <summary>İçeriği birebir aynı dosyalar: en kısa adlı olan kalır, diğerleri kopya sayılır (yol → asıl ad).</summary>
+        static Dictionary<string, string> Kopyalar(IEnumerable<FileInfo> dosyalar)
+        {
+            var sonuc = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var g in dosyalar.Where(f => f.Length > 0 && f.Length < 500L * 1024 * 1024 && !f.Name.StartsWith("~$")).GroupBy(f => f.Length + "|" + f.Extension.ToLowerInvariant()).Where(g => g.Count() > 1))
+            {
+                var ozetli = new List<(FileInfo f, string o)>();
+                foreach (var f in g) { try { ozetli.Add((f, Ozet(f.FullName))); } catch { } }
+                foreach (var ayni in ozetli.GroupBy(x => x.o).Where(x => x.Count() > 1))
+                {
+                    var l = ayni.Select(x => x.f).OrderBy(f => f.Name.Length).ThenBy(f => f.LastWriteTime).ToList();
+                    foreach (var f in l.Skip(1)) sonuc[f.FullName] = l[0].Name;
+                }
+            }
+            return sonuc;
+        }
+
+        static void Karar(FileSystemInfo o, FileSystemInfo[] kardesler, HashSet<string> son, DateTime sinir, out string kod, out string neden, out string hedef, out long boyut)
         {
             hedef = ""; boyut = 0;
             if (o is DirectoryInfo d)
             {
                 if (d.Name.Equals(Toplama, StringComparison.OrdinalIgnoreCase)) { kod = "K"; neden = "Toplama klasörü"; return; }
                 bool bos = !d.EnumerateFiles("*", SearchOption.AllDirectories).Any();
-                if (bos && SonKullanim(d) < sinir) { kod = "S"; neden = "Boş klasör"; return; }
+                if (bos && d.LastWriteTime < sinir) { kod = "S"; neden = "Boş klasör"; return; }
+                if (SurucuKlasoru.IsMatch(d.Name) && d.LastWriteTime < sinir) { kod = "S"; neden = "Sürücü paketi"; return; }
+                // Kaydedilmiş web sayfasının "_files" klasörü sayfasıyla birlikte toplanır
+                if (d.Name.EndsWith("_files", StringComparison.OrdinalIgnoreCase))
+                {
+                    var sayfa = d.Name.Substring(0, d.Name.Length - 6);
+                    var html = kardesler.OfType<FileInfo>().FirstOrDefault(f => Path.GetFileNameWithoutExtension(f.Name).Equals(sayfa, StringComparison.OrdinalIgnoreCase) && Turler.TryGetValue(f.Extension, out var k) && k == "Web sayfaları");
+                    if (html != null && !Yeni(html, son, sinir)) { kod = "T"; neden = "Web sayfası dosyaları"; hedef = Toplama + "\\Web sayfaları"; return; }
+                }
                 kod = "K"; neden = "Klasör"; return;
             }
             var f = (FileInfo)o;
@@ -105,32 +147,28 @@ namespace Sem.Ajan
                 if (KisayolBozuk(f.FullName)) { kod = "S"; neden = "Bozuk kısayol"; return; }
                 kod = "K"; neden = "Kısayol"; return;
             }
-            if (uz == ".url" || uz == ".website") { kod = "K"; neden = "Kısayol"; return; }
+            if (uz == ".url" || uz == ".website" || uz == ".appref-ms") { kod = "K"; neden = "Kısayol"; return; }
             if (f.Name.StartsWith("~$")) { kod = "S"; neden = "Office geçici dosyası"; return; }
             if (Cop.Contains(uz)) { kod = "S"; neden = "Geçici dosya"; return; }
             if (f.Length == 0) { kod = "S"; neden = "Boş dosya"; return; }
+            if (uz == ".bat" || uz == ".cmd" || uz == ".vbs" || uz == ".ps1") { kod = "S"; neden = "Komut dosyası"; return; }
 
-            var km = Kopya.Match(adsiz);
-            if (km.Success)
-            {
-                var asil = new FileInfo(Path.Combine(f.DirectoryName, km.Groups["ad"].Value + f.Extension));
-                if (asil.Exists && asil.Length == f.Length && f.Length < 500L * 1024 * 1024 && Ozet(asil.FullName) == Ozet(f.FullName))
-                { kod = "S"; neden = "Aynısının kopyası: " + asil.Name; return; }
-            }
-
-            bool yeni = SonKullanim(f) >= sinir;
+            bool yeni = Yeni(f, son, sinir);
             if (uz == ".msi" || (uz == ".exe" && Kurulum.IsMatch(adsiz)))
             {
                 if (yeni) { kod = "K"; neden = "Yeni kurulum dosyası"; return; }
                 kod = "S"; neden = "Kurulum dosyası"; return;
             }
-            if (uz == ".exe" || uz == ".bat" || uz == ".cmd") { kod = "K"; neden = "Program"; return; }
+            if (uz == ".exe") { kod = "K"; neden = "Program"; return; }
             if (yeni) { kod = "K"; neden = "Son günlerde kullanıldı"; return; }
 
             string kat;
             if (!Turler.TryGetValue(uz, out kat)) kat = "Diğer";
             kod = "T"; neden = "Eski dosya"; hedef = Toplama + "\\" + kat;
         }
+
+        /// <summary>Son günlerde değiştirildi ya da açıldı mı (açılma: kullanıcının son kullanılanlar listesi; erişim tarihine güvenilmez).</summary>
+        static bool Yeni(FileInfo f, HashSet<string> son, DateTime sinir) => f.LastWriteTime >= sinir || son.Contains(f.Name);
 
         static string Ozet(string yol)
         {
