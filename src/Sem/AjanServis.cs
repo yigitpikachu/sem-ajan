@@ -104,6 +104,7 @@ namespace Sem.Ajan
             try { GuncellemeKontrol(); } catch (Exception e) { Gunluk.Yaz("Güncelleme: " + e.Message); }
             try { SabahKontrol(); } catch (Exception e) { Gunluk.Yaz("Sabah: " + e.Message); }
             if (!wolDenendi && ayar.SabahMacler != "" && !ayar.WolHazir) { wolDenendi = true; WolHazirla(); } // güncellemeden sonra bir kez
+            try { MasaustuDuzeni.EskileriTemizle(); } catch { }
             try { YaziciKilitKontrol(); } catch (Exception e) { Gunluk.Yaz("Yazıcı kilidi: " + e.Message); }
             try { paylasim?.OrtakKontrol(); } catch (Exception e) { Gunluk.Yaz("Ortak: " + e.Message); }
             try { KilitTasarimi(); } catch { }
@@ -605,6 +606,23 @@ namespace Sem.Ajan
                 }
 
                 case "DOSYA_LISTE": return DosyaListe(m["yol"]);
+
+                case "MASAUSTU_TARA":
+                {
+                    int gun; if (!int.TryParse(m["gun"], out gun)) gun = 2;
+                    var r = Mesaj.Basari(); r["plan"] = MasaustuDuzeni.Planla(gun);
+                    return r;
+                }
+
+                case "MASAUSTU_DUZENLE":
+                {
+                    int t, s, h;
+                    var hatalar = MasaustuDuzeni.Uygula(m["plan"], out t, out s, out h);
+                    Gunluk.Yaz("Masaüstü düzeni: " + t + " toplandı, " + s + " Sem Silinenler'e, " + h + " hata");
+                    var r = Mesaj.Basari(t + " dosya toplandı, " + s + " dosya silindi" + (h > 0 ? ", " + h + " dosya taşınamadı" : ""));
+                    r["toplanan"] = t.ToString(); r["silinen"] = s.ToString(); r["hata"] = h.ToString(); r["hatalar"] = hatalar;
+                    return r;
+                }
 
                 case "DOSYA_AL":
                 {

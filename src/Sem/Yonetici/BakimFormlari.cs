@@ -444,3 +444,184 @@ namespace Sem.Yonetici
         }
     }
 }
+
+namespace Sem.Yonetici
+{
+    /// <summary>
+    /// Masaüstü düzeni: seçilen bilgisayarların masaüstleri taranır, ne kalacağı / toplanacağı / silineceği önizlenir;
+    /// "Uygula" basılı tutulunca işaretli olanlar taşınır. Tarama sonuçları %LocalAppData%\Sem\masaustu\ içine de yazılır.
+    /// </summary>
+    class MasaustuForm : ModernForm
+    {
+        public const int Gun = 2;
+
+        class Oge { public string Kod, Yol, Neden, Hedef, Satir; public long Boyut; public IsaretKutusu Kutu; }
+        class Bolum { public Pc Pc; public List<Oge> Ogeler = new List<Oge>(); public string Hata; public string Sonuc; }
+
+        readonly List<Pc> pcler;
+        readonly List<Bolum> bolumler = new List<Bolum>();
+        readonly Panel govde, kutu;
+        readonly Label durum;
+        readonly Buton uygula, tara;
+        bool calisiyor;
+
+        public MasaustuForm(List<Pc> pcler) : base("Masaüstü düzeni", 760, 720)
+        {
+            this.pcler = pcler;
+            SabitBoyut = true;
+            int g = Icerik.Width;
+            var acik = Yazi.Etiket("Öğretmen klasörleri, kısayollar ve son " + Gun + " günde açılan dosyalar kalır. Eski dosyalar masaüstündeki \"Materyaller\" klasörüne türlerine göre toplanır. Gereksizler C:\\Sem Silinenler klasörüne taşınır, 30 gün sonra kendiliğinden silinir. İstemediğiniz satırın işaretini kaldırın.", 9.5f, false, Renk.Yazi2, false);
+            acik.SetBounds(0, 0, g, Tema.S(58));
+            govde = new Panel { AutoScroll = true, BackColor = Renk.Zemin };
+            kutu = InceKaydirma.Sar(govde); kutu.SetBounds(0, Tema.S(66), g, Icerik.Height - Tema.S(66 + 56));
+            durum = Yazi.Etiket("", 9.5f, false, Renk.Yazi2, false);
+            durum.TextAlign = ContentAlignment.MiddleLeft;
+            uygula = new Buton("Uygula", Ik.Tik, ButonTuru.Birincil) { BasiliTut = true, Enabled = false };
+            uygula.Width = Math.Max(uygula.Width, Tema.S(130));
+            tara = new Buton("Yeniden tara", Ik.Yenile, ButonTuru.Ikincil);
+            uygula.Location = new Point(g - uygula.Width, Icerik.Height - uygula.Height);
+            tara.Location = new Point(uygula.Left - tara.Width - Tema.S(8), uygula.Top);
+            durum.SetBounds(0, uygula.Top, Math.Max(0, tara.Left - Tema.S(12)), uygula.Height);
+            uygula.Onaylandi += (s, e) => Uygula();
+            uygula.KisaBasildi += (s, e) => durum.Text = "Yanlışlıkla olmasın diye \"Uygula\"yı dolana kadar basılı tutun.";
+            tara.Click += (s, e) => Tara();
+            Icerik.Controls.AddRange(new Control[] { acik, kutu, durum, tara, uygula });
+            Shown += (s, e) => Tara();
+        }
+
+        void Tara()
+        {
+            if (calisiyor) return;
+            calisiyor = true; uygula.Enabled = false; tara.Enabled = false;
+            bolumler.Clear();
+            foreach (var p in pcler) bolumler.Add(new Bolum { Pc = p });
+            durum.Text = "Masaüstleri taranıyor…"; durum.ForeColor = Renk.Yazi2;
+            Ciz();
+            Task.Run(() =>
+            {
+                Parallel.ForEach(bolumler, b =>
+                {
+                    try
+                    {
+                        var m = new Mesaj("MASAUSTU_TARA"); m["gun"] = Gun.ToString();
+                        var c = Baglanti.Gonder(b.Pc.Ip, m, 60000);
+                        if (!c.Tamam) { b.Hata = c["aciklama"] == "" ? "Bu bilgisayardaki Sem Ajan eski, önce güncellenmeli" : c["aciklama"]; return; }
+                        foreach (var satir in c["plan"].Split('\n'))
+                        {
+                            var a = satir.Split('|');
+                            if (a.Length < 5) continue;
+                            long boy; long.TryParse(a[2], out boy);
+                            b.Ogeler.Add(new Oge { Kod = a[0], Yol = a[1], Boyut = boy, Neden = a[3], Hedef = a[4], Satir = satir });
+                        }
+                        try
+                        {
+                            var k = Path.Combine(Depo.Klasor, "masaustu"); Directory.CreateDirectory(k);
+                            File.WriteAllText(Path.Combine(k, b.Pc.Ad + ".txt"), DateTime.Now.ToString("dd.MM.yyyy HH:mm") + "\r\n" + c["plan"].Replace("\n", "\r\n"), new UTF8Encoding(true));
+                        }
+                        catch { }
+                    }
+                    catch (Exception e) { b.Hata = e.Message; }
+                });
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        calisiyor = false; tara.Enabled = true;
+                        int is_ = bolumler.Sum(b => b.Ogeler.Count(o => o.Kod != "K"));
+                        uygula.Enabled = is_ > 0;
+                        durum.Text = is_ > 0 ? "Hazır. Uygulamak için \"Uygula\"yı basılı tutun." : "Düzenlenecek bir şey yok.";
+                        Ciz();
+                    }));
+                }
+                catch { }
+            });
+        }
+
+        static string Boyut(long b) => b <= 0 ? "" : b < 1024 * 1024 ? Math.Max(1, b / 1024) + " KB" : (b / 1048576.0).ToString("0.0") + " MB";
+
+        void Ciz()
+        {
+            govde.SuspendLayout();
+            foreach (Control c in govde.Controls.Cast<Control>().ToList()) c.Dispose();
+            govde.Controls.Clear();
+            int g = kutu.ClientSize.Width - Tema.S(26), y = 0;
+            foreach (var b in bolumler)
+            {
+                var ad = Yazi.Etiket(b.Pc.Baslik, 12f, true, Renk.Yazi, false); ad.SetBounds(0, y, g / 2, Tema.S(28));
+                int kal = b.Ogeler.Count(o => o.Kod == "K"), top = b.Ogeler.Count(o => o.Kod == "T"), sil = b.Ogeler.Count(o => o.Kod == "S");
+                var ozet = Yazi.Etiket(b.Sonuc ?? (b.Hata != null ? b.Hata : calisiyor && b.Ogeler.Count == 0 ? "Taranıyor…" : kal + " kalır  ·  " + top + " toplanır  ·  " + sil + " silinir"),
+                    9.5f, false, b.Hata != null ? Renk.PembeKoyu : b.Sonuc != null ? Renk.YesilKoyu : Renk.Yazi2, false);
+                ozet.SetBounds(g / 2, y + Tema.S(4), g / 2, Tema.S(24)); ozet.TextAlign = ContentAlignment.TopRight; ozet.AutoEllipsis = true;
+                govde.Controls.Add(ad); govde.Controls.Add(ozet);
+                y += Tema.S(36);
+                foreach (var (kod, baslik, renk) in new[] { ("S", "Silinecek", Renk.PembeKoyu), ("T", "Materyaller klasörüne toplanacak", Renk.Mavi) })
+                {
+                    var l = b.Ogeler.Where(o => o.Kod == kod).ToList();
+                    if (l.Count == 0) continue;
+                    var ub = Yazi.UstBaslik(baslik + " (" + l.Count + ")", renk); ub.Location = new Point(0, y); govde.Controls.Add(ub);
+                    y += Tema.S(22);
+                    foreach (var o in l)
+                    {
+                        if (o.Kutu == null) o.Kutu = new IsaretKutusu { Isaretli = true };
+                        else o.Kutu = new IsaretKutusu { Isaretli = o.Kutu.Isaretli };
+                        o.Kutu.Location = new Point(-Tema.S(8), y);
+                        var dad = Yazi.Etiket(Path.GetFileName(o.Yol), 9.5f, false, Renk.Yazi, false); dad.SetBounds(Tema.S(34), y + Tema.S(5), g - Tema.S(34 + 260), Tema.S(22)); dad.AutoEllipsis = true;
+                        var ne = Yazi.Etiket(kod == "T" ? o.Hedef.Replace("\\", " › ") : o.Neden, 8.5f, false, Renk.Yazi3, false); ne.SetBounds(g - Tema.S(256), y + Tema.S(6), Tema.S(190), Tema.S(20)); ne.AutoEllipsis = true;
+                        var by = Yazi.Etiket(Boyut(o.Boyut), 8.5f, false, Renk.Yazi3, false); by.SetBounds(g - Tema.S(64), y + Tema.S(6), Tema.S(64), Tema.S(20)); by.TextAlign = ContentAlignment.TopRight;
+                        var kk = o.Kutu; dad.Click += (s, e) => kk.Isaretli = !kk.Isaretli; dad.Cursor = Cursors.Hand;
+                        govde.Controls.AddRange(new Control[] { o.Kutu, dad, ne, by });
+                        y += Tema.S(30);
+                    }
+                    y += Tema.S(8);
+                }
+                var kalan = b.Ogeler.Where(o => o.Kod == "K").ToList();
+                if (kalan.Count > 0)
+                {
+                    var ub = Yazi.UstBaslik("Kalacak (" + kalan.Count + ")", Renk.Yazi3); ub.Location = new Point(0, y); govde.Controls.Add(ub);
+                    y += Tema.S(22);
+                    var metin = string.Join("  ·  ", kalan.Select(o => Path.GetFileName(o.Yol)));
+                    var kl = Yazi.Etiket(metin, 9f, false, Renk.Yazi2, false);
+                    int h; using (var gr = CreateGraphics()) h = (int)Math.Ceiling(gr.MeasureString(metin, kl.Font, g).Height) + Tema.S(4);
+                    kl.SetBounds(0, y, g, h); govde.Controls.Add(kl);
+                    y += h + Tema.S(6);
+                }
+                y += Tema.S(22);
+            }
+            govde.ResumeLayout();
+        }
+
+        void Uygula()
+        {
+            if (calisiyor) return;
+            calisiyor = true; uygula.Enabled = false; tara.Enabled = false;
+            durum.Text = "Uygulanıyor…"; durum.ForeColor = Renk.Yazi2;
+            var isler = bolumler.Where(b => b.Hata == null).Select(b => (b, plan: string.Join("\n", b.Ogeler.Where(o => o.Kod != "K" && o.Kutu != null && o.Kutu.Isaretli).Select(o => o.Satir)))).Where(x => x.plan != "").ToList();
+            Task.Run(() =>
+            {
+                Parallel.ForEach(isler, x =>
+                {
+                    try
+                    {
+                        var m = new Mesaj("MASAUSTU_DUZENLE"); m["plan"] = x.plan;
+                        var c = Baglanti.Gonder(x.b.Pc.Ip, m, 300000);
+                        x.b.Sonuc = c.Tamam ? "✓ " + c["aciklama"] : null;
+                        if (!c.Tamam) x.b.Hata = c["aciklama"];
+                    }
+                    catch (Exception e) { x.b.Hata = e.Message; }
+                });
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        calisiyor = false; tara.Enabled = true;
+                        durum.Text = "Bitti. Silinenler C:\\Sem Silinenler klasöründe 30 gün bekler.";
+                        durum.ForeColor = Renk.YesilKoyu;
+                        foreach (var b in bolumler) b.Ogeler.RemoveAll(o => o.Kod != "K" && o.Kutu != null && o.Kutu.Isaretli && b.Sonuc != null);
+                        Ciz();
+                    }));
+                }
+                catch { }
+            });
+        }
+    }
+}

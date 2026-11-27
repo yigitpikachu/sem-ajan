@@ -662,6 +662,12 @@ namespace Sem.Yonetici
 
         void Guvenli(Action a) { try { a(); } catch (Exception ex) { Kaydet("Hata: " + ex.Message, 2); Tost("Hata: " + ex.Message); } }
 
+        void MasaustuDuzeni()
+        {
+            var h = Hedefler(); if (h == null || h.Count == 0) return;
+            using (var f = new MasaustuForm(h)) f.ShowDialog(this);
+        }
+
         AcilirMenu DigerMenu()
         {
             var secili = kartlar.Values.Where(k => k.Secili).Select(k => k.Pc).ToList();
@@ -681,6 +687,7 @@ namespace Sem.Yonetici
             m.Ekle("Uyandır (aç)", Ik.Gunes, () => Guvenli(Uyandir)).Ayrac();
             if (ayarlar.Yazici) m.Ekle("Yazıcı kur", Ik.Yazici, () => Guvenli(YaziciKur)).Ekle("Yazıcıyı onar", Ik.Anahtar_, () => Guvenli(YaziciOnar)).Ekle("Yazıcıyı sabitle", Ik.Kalkan, () => Guvenli(YaziciSabitle));
             if (ayarlar.Program) m.Ekle("Program kur", Ik.ProgramEkle, () => Guvenli(ProgramKur));
+            m.Ekle("Masaüstü düzeni", Ik.Firca, () => Guvenli(MasaustuDuzeni));
             m.Ekle("Dosyadan güncelle", Ik.Esitle, () => Guvenli(SemGuncelle)).Ayrac()
              .Ekle("Bekleyen kapatmayı iptal et", Ik.KapatDaire, () => Guvenli(KapatmayiIptal))
              .Ekle("Hemen kapat", Ik.Guc, () => Guvenli(HemenKapat), true)
