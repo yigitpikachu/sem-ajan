@@ -8,6 +8,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using Sem.Ajan;
 using Sem.Arayuz;
 using Sem.Ortak;
 
@@ -161,6 +162,18 @@ namespace Sem.Yonetici
         public bool Onizleme = true, Dosya = true, Yazici = true, Program = true, Duvar = true, Duyurular = true, Sabah = true;
         public bool Liste;
 
+        // Açılış ve kapanış (tek ekran): tanımlandıysa bilgisayarlara sürekli bu ayarlar uygulanır (kapalı olanlara açılınca).
+        public bool AcKapTanimli;
+        public string[] Kapanma = { "", "", "18:00", "18:00", "18:00", "18:00", "17:00" }; // DayOfWeek sırası; "" = merkez kapalı
+        public int UyariDk = 5, ErteleDk = 15, ErteleHak = 2;
+        public bool AcilistaAc = true;      // ana bilgisayar açılınca diğerlerini aç
+        public string SabahSaat = "";       // ayrıca belirli saatte (ana bilgisayar açıksa)
+        public HashSet<string> Acilmayan = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> Kapanmayan = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Merkezin açık olduğu günler (DayOfWeek): kapanma saati olan günler.</summary>
+        public string AcikGunler => string.Join(",", Enumerable.Range(0, 7).Where(g => Kapanma[g] != ""));
+
         static string Dosya_ => Path.Combine(Depo.Klasor, "ayarlar.txt");
 
         public static YonetimAyar Oku()
@@ -169,16 +182,20 @@ namespace Sem.Yonetici
             try
             {
                 if (!File.Exists(Dosya_)) return a;
-                var d = File.ReadAllLines(Dosya_).Select(x => x.Split('=')).Where(x => x.Length == 2).ToDictionary(x => x[0].Trim(), x => x[1].Trim() == "1");
-                bool v;
-                if (d.TryGetValue("onizleme", out v)) a.Onizleme = v;
-                if (d.TryGetValue("dosya", out v)) a.Dosya = v;
-                if (d.TryGetValue("yazici", out v)) a.Yazici = v;
-                if (d.TryGetValue("program", out v)) a.Program = v;
-                if (d.TryGetValue("duvar", out v)) a.Duvar = v;
-                if (d.TryGetValue("duyurular", out v)) a.Duyurular = v;
-                if (d.TryGetValue("sabah", out v)) a.Sabah = v;
-                if (d.TryGetValue("liste", out v)) a.Liste = v;
+                var d = File.ReadAllLines(Dosya_).Select(x => { int i = x.IndexOf('='); return i < 0 ? null : new[] { x.Substring(0, i).Trim(), x.Substring(i + 1).Trim() }; })
+                    .Where(x => x != null).GroupBy(x => x[0]).ToDictionary(x => x.Key, x => x.Last()[1]);
+                Func<string, bool, bool> b = (k, vars) => d.TryGetValue(k, out var v) ? v == "1" : vars;
+                a.Onizleme = b("onizleme", true); a.Dosya = b("dosya", true); a.Yazici = b("yazici", true); a.Program = b("program", true);
+                a.Duvar = b("duvar", true); a.Duyurular = b("duyurular", true); a.Sabah = b("sabah", true); a.Liste = b("liste", false);
+                a.AcKapTanimli = b("ackap", false); a.AcilistaAc = b("acilista_ac", true);
+                for (int g = 0; g < 7; g++) if (d.TryGetValue("kapanma_" + AjanAyar.GunKod[g], out var k)) a.Kapanma[g] = k;
+                int n;
+                if (d.TryGetValue("uyari_dk", out var u) && int.TryParse(u, out n)) a.UyariDk = n;
+                if (d.TryGetValue("ertele_dk", out u) && int.TryParse(u, out n)) a.ErteleDk = n;
+                if (d.TryGetValue("ertele_hak", out u) && int.TryParse(u, out n)) a.ErteleHak = n;
+                if (d.TryGetValue("sabah_saat", out u)) a.SabahSaat = u;
+                if (d.TryGetValue("acilmayan", out u)) foreach (var x in u.Split(';').Where(x => x != "")) a.Acilmayan.Add(x);
+                if (d.TryGetValue("kapanmayan", out u)) foreach (var x in u.Split(';').Where(x => x != "")) a.Kapanmayan.Add(x);
             }
             catch { }
             return a;
@@ -189,9 +206,14 @@ namespace Sem.Yonetici
             Func<bool, string> b = x => x ? "1" : "0";
             try
             {
-                File.WriteAllLines(Dosya_, new[] {
+                var l = new List<string> {
                     "onizleme=" + b(Onizleme), "dosya=" + b(Dosya), "yazici=" + b(Yazici), "program=" + b(Program),
-                    "duvar=" + b(Duvar), "duyurular=" + b(Duyurular), "sabah=" + b(Sabah), "liste=" + b(Liste) });
+                    "duvar=" + b(Duvar), "duyurular=" + b(Duyurular), "sabah=" + b(Sabah), "liste=" + b(Liste),
+                    "ackap=" + b(AcKapTanimli), "acilista_ac=" + b(AcilistaAc), "sabah_saat=" + SabahSaat,
+                    "uyari_dk=" + UyariDk, "ertele_dk=" + ErteleDk, "ertele_hak=" + ErteleHak,
+                    "acilmayan=" + string.Join(";", Acilmayan), "kapanmayan=" + string.Join(";", Kapanmayan) };
+                for (int g = 0; g < 7; g++) l.Add("kapanma_" + AjanAyar.GunKod[g] + "=" + Kapanma[g]);
+                File.WriteAllLines(Dosya_, l);
             }
             catch { }
         }

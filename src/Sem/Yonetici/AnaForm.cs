@@ -56,6 +56,8 @@ namespace Sem.Yonetici
             Text = "Sem Ajan";
             StartPosition = FormStartPosition.CenterScreen; ClientSize = Tema.S(1240, 800); MinimumSize = Tema.S(860, 600);
             BackColor = Renk.Zemin; Font = Tema.Yazi(10f); DoubleBuffered = true;
+            // Kenarlıksız, yuvarlak köşeli pencere: kendi küçült/büyüt/kapat düğmeleri, kenardan boyutlandırma
+            FormBorderStyle = FormBorderStyle.None; Padding = new Padding(Kenar);
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             // ------------------------------------------------ Yan menü
@@ -164,6 +166,11 @@ namespace Sem.Yonetici
             sayfaKayit.Controls.Add(kkart); kkart.BringToFront();
 
             Controls.Add(sayfaPc); Controls.Add(sayfaDuyuru); Controls.Add(sayfaKayit); Controls.Add(yan);
+            pencereDugmeleri = new PencereDugmeleri(this) { Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            Controls.Add(pencereDugmeleri); pencereDugmeleri.BringToFront();
+            // Boş yerden tutup taşıma, çift tıklayınca büyütme (başlık çubuğu yerine)
+            foreach (var c in new Control[] { yan, bas, sayfaPc, sayfaDuyuru, sayfaKayit, dbas, logo, ad, ad2 }) TasimaEkle(c);
+            foreach (Control c in sayfaKayit.Controls) if (c is Panel && c.Dock == DockStyle.Top) TasimaEkle(c);
 
             menuPc.Click += (s, e) => SayfaGoster(0);
             menuDuyuru.Click += (s, e) => SayfaGoster(1);
@@ -192,7 +199,7 @@ namespace Sem.Yonetici
 
             Load += (s, e) =>
             {
-                Tema.BaslikRengi(Handle, Renk.YanMenu);
+                KoseleriAyarla();
                 if (tepsiModu) return;
                 if (!Giris()) { Cik(); return; }
                 Basla();
@@ -301,6 +308,75 @@ namespace Sem.Yonetici
             cikiliyor = true;
             try { tepsi.Visible = false; tepsi.Dispose(); } catch { }
             Application.Exit();
+        }
+
+        // ------------------------------------------------------------------ Kenarlıksız pencere
+        int Kenar => Tema.S(5);
+        PencereDugmeleri pencereDugmeleri;
+        bool dwmYuvarlak;
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool ReleaseCapture();
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
+
+        void TasimaEkle(Control c)
+        {
+            c.MouseDown += (s, e) =>
+            {
+                if (e.Button != MouseButtons.Left || Environment.OSVersion.Platform != PlatformID.Win32NT) return;
+                if (e.Clicks == 2) { PencereDugmeleri.BuyutKucult(this); return; }
+                ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); // WM_NCLBUTTONDOWN, HTCAPTION
+            };
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.Style |= 0x00020000 | 0x00010000 | 0x00080000; // WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU: görev çubuğundan küçültme
+                cp.ClassStyle |= 0x20000; // CS_DROPSHADOW
+                return cp;
+            }
+        }
+
+        void KoseleriAyarla()
+        {
+            if (!IsHandleCreated) return;
+            if (!dwmYuvarlak) dwmYuvarlak = Tema.KoseleriYuvarla(Handle); // Windows 11: sistemin yumuşak köşesi
+            bool tam = WindowState == FormWindowState.Maximized;
+            var pd = new Padding(tam ? 0 : Kenar);
+            if (Padding != pd) Padding = pd;
+            if (pencereDugmeleri != null) { pencereDugmeleri.Location = new Point(ClientSize.Width - Padding.Right - pencereDugmeleri.Width, Padding.Top); pencereDugmeleri.Invalidate(); }
+            if (dwmYuvarlak) return;
+            // Windows 10: pencere yuvarlak şekle kesilir, kenar çizgisi yumuşatılarak çizilir
+            if (tam || WindowState == FormWindowState.Minimized) { Region = null; return; }
+            using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width, Height), Tema.S(10))) { var eski = Region; Region = new Region(p); eski?.Dispose(); }
+        }
+
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); MaximizedBounds = Screen.FromHandle(Handle).WorkingArea; KoseleriAyarla(); }
+        protected override void OnResize(EventArgs e) { base.OnResize(e); KoseleriAyarla(); Invalidate(); }
+        protected override void OnLocationChanged(EventArgs e) { base.OnLocationChanged(e); if (IsHandleCreated) MaximizedBounds = Screen.FromControl(this).WorkingArea; }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (Padding.Left == 0) return;
+            var g = e.Graphics;
+            // Kenar payı: yan menünün yanı yan menü renginde, gerisi zemin renginde, kesintisiz görünsün
+            using (var b = new SolidBrush(Renk.YanMenu)) g.FillRectangle(b, 0, 0, yan.Right, Height);
+            Tema.Kaliteli(g);
+            using (var pen = new Pen(Renk.CizgiKoyu))
+            using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width - 1, Height - 1), Tema.S(dwmYuvarlak ? 8 : 10))) g.DrawPath(pen, p);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            if (m.Msg == 0x84) // WM_NCHITTEST: kenardan boyutlandırma
+            {
+                long lp = m.LParam.ToInt64();
+                var p = new Point((short)(lp & 0xFFFF), (short)((lp >> 16) & 0xFFFF));
+                m.Result = (IntPtr)Tema.KenarBul(this, p, m.Result.ToInt32(), Kenar);
+            }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -559,7 +635,7 @@ namespace Sem.Yonetici
             else if (secili.Count > 1) m.Ekle("Grubunu değiştir", Ik.Etiket, () => Guvenli(GrupDegistir)).Ayrac();
             m.Ekle("Grupları düzenle", Ik.Etiket, () => Guvenli(GruplariDuzenle)).Ayrac();
             m.Ekle("Bugün kapanmasın", Ik.Duraklat, () => Guvenli(BugunKapatma))
-             .Ekle("Kapanma saatleri", Ik.Takvim, () => Guvenli(KapanmaSaatleri));
+             .Ekle("Açılış ve kapanış", Ik.Takvim, () => Guvenli(AcilisKapanis));
             if (ayarlar.Duvar) m.Ekle("Duvar kâğıdı", Ik.Resim, () => Guvenli(DuvarKagidi));
             m.Ekle("Uyandır (aç)", Ik.Gunes, () => Guvenli(Uyandir)).Ayrac();
             if (ayarlar.Yazici) m.Ekle("Yazıcı kur", Ik.Yazici, () => Guvenli(YaziciKur)).Ekle("Yazıcıyı onar", Ik.Anahtar_, () => Guvenli(YaziciOnar)).Ekle("Yazıcıyı sabitle", Ik.Kalkan, () => Guvenli(YaziciSabitle));
@@ -612,6 +688,7 @@ namespace Sem.Yonetici
                             pcler.Add(new Pc { Ad = Environment.MachineName, Ip = "127.0.0.1" });
                     }
                     List<Pc> kopya; lock (pcKilit) kopya = pcler.ToList();
+                    var acKap = ayarlar; var plan = AcKapPlani(acKap, kopya);
                     Parallel.ForEach(kopya, new ParallelOptions { MaxDegreeOfParallelism = 16 }, p =>
                     {
                         try
@@ -639,6 +716,8 @@ namespace Sem.Yonetici
                                 var em = new Mesaj("AYAR"); em["ekran_izni"] = ayarlar.Onizleme ? "1" : "0";
                                 try { Baglanti.Gonder(p.Ip, em, 3000); } catch { }
                             }
+                            // Açılış ve kapanış ayarları (tek ekrandan) her bilgisayara; kapalı olanlara açılınca
+                            if (plan != null) AcKapEsitle(acKap, plan, p, d);
                             // Yeni sağlık uyarısı Etkinlik'e düşsün
                             var sg = d["saglik"];
                             if (sg != p.SonSaglik)
@@ -979,15 +1058,74 @@ namespace Sem.Yonetici
             Tost("Açma sinyali gönderildi. Bilgisayarın ayarlarında Wake-on-LAN açıksa 1-2 dakikada açılır.");
         }
 
-        void KapanmaSaatleri()
+        static bool YoneticiPc(Pc p) =>
+            p.Ad.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase) || p.SonDurum?["yonetici"] == "1";
+
+        /// <summary>Günler, kapanma saatleri, sabah açılma ve her bilgisayarın açılsın/kapansın seçimi tek ekranda.</summary>
+        void AcilisKapanis()
         {
-            var h = Hedefler(); if (h == null) return;
-            using (var f = new KapanmaForm(h[0].SonDurum ?? new Mesaj(), h.Count))
+            List<Pc> liste; lock (pcKilit) liste = pcler.Where(p => !YoneticiPc(p)).ToList();
+            var a = YonetimAyar.Oku();
+            if (!a.AcKapTanimli)
+            {
+                // İlk açılışta bilgisayarlardaki mevcut ayarlarla doldur
+                var ornek = liste.Select(p => p.SonDurum).FirstOrDefault(d => d != null && d.Alan.ContainsKey("kapanma_pzt"));
+                if (ornek != null)
+                {
+                    for (int g = 0; g < 7; g++) a.Kapanma[g] = ornek["kapanma_" + AjanAyar.GunKod[g]];
+                    int n;
+                    if (int.TryParse(ornek["uyari_dk"], out n)) a.UyariDk = n;
+                    if (int.TryParse(ornek["ertele_dk"], out n)) a.ErteleDk = n;
+                    if (int.TryParse(ornek["ertele_hak"], out n)) a.ErteleHak = n;
+                }
+                foreach (var p in liste.Where(p => p.SonDurum != null && p.SonDurum["otomatik"] == "0")) a.Kapanmayan.Add(p.Ad);
+                var bu = BuPc()?.SonDurum; if (bu != null) a.SabahSaat = bu["sabah_saat"];
+            }
+            using (var f = new AcKapForm(a, liste))
             {
                 if (f.ShowDialog(this) != DialogResult.OK) return;
-                var m = f.Sonuc;
-                Uygula("Kapanma saatleri", h, p => m);
+                // Görünen özellikler (Ayarlar) bu arada değişmiş olabilir; yalnızca açılış/kapanış alanları alınır.
+                var y = YonetimAyar.Oku();
+                y.AcKapTanimli = true; y.Kapanma = a.Kapanma; y.UyariDk = a.UyariDk; y.ErteleDk = a.ErteleDk; y.ErteleHak = a.ErteleHak;
+                y.AcilistaAc = a.AcilistaAc; y.SabahSaat = a.SabahSaat; y.Acilmayan = a.Acilmayan; y.Kapanmayan = a.Kapanmayan; y.Sabah = a.Sabah;
+                y.Yaz(); ayarlar = y;
+                OzellikleriUygula();
+                Kaydet("Açılış ve kapanış ayarları kaydedildi", 1);
+                Tost("Kaydedildi. Açık bilgisayarlara birkaç saniye içinde, kapalı olanlara açıldıklarında uygulanır.");
+                Task.Run(() => { try { Yenile(); } catch { } });
             }
+        }
+
+        class AcKapPlan { public Mesaj Sabah; public string Imza; }
+
+        /// <summary>Tüm bilgisayarlara gidecek sabah açılma planı (yalnızca yönetici bilgisayarı açılışta gönderir).</summary>
+        static AcKapPlan AcKapPlani(YonetimAyar a, List<Pc> kopya)
+        {
+            if (!a.AcKapTanimli) return null;
+            var m = new Mesaj("SABAH_PLANI");
+            m["saat"] = a.SabahSaat; m["gunler"] = a.AcikGunler; m["acilis"] = a.AcilistaAc ? "1" : "0";
+            m["macler"] = (a.AcilistaAc || a.SabahSaat != "")
+                ? string.Join(";", kopya.Where(p => !YoneticiPc(p) && p.Mac != "" && !a.Acilmayan.Contains(p.Ad)).Select(p => p.Mac).Distinct().OrderBy(x => x))
+                : "";
+            return new AcKapPlan { Sabah = m, Imza = m["saat"] + "|" + m["gunler"] + "|" + m["macler"] + "|" + m["acilis"] };
+        }
+
+        void AcKapEsitle(YonetimAyar a, AcKapPlan plan, Pc p, Mesaj d)
+        {
+            if (d.Alan.ContainsKey("sabah_acilis"))
+            {
+                var imza = d["sabah_saat"] + "|" + d["sabah_gunler"] + "|" + d["sabah_macler"] + "|" + d["sabah_acilis"];
+                if (imza != plan.Imza) try { Baglanti.Gonder(p.Ip, plan.Sabah, 4000); } catch { }
+            }
+            if (YoneticiPc(p) || !d.Alan.ContainsKey("kapanma_pzt")) return;
+            string oto = a.Kapanmayan.Contains(p.Ad) ? "0" : "1";
+            bool farkli = d["otomatik"] != oto || d["uyari_dk"] != a.UyariDk.ToString() || d["ertele_dk"] != a.ErteleDk.ToString() || d["ertele_hak"] != a.ErteleHak.ToString();
+            for (int g = 0; g < 7; g++) if (d["kapanma_" + AjanAyar.GunKod[g]] != a.Kapanma[g]) farkli = true;
+            if (!farkli) return;
+            var m = new Mesaj("AYAR");
+            for (int g = 0; g < 7; g++) m["kapanma_" + AjanAyar.GunKod[g]] = a.Kapanma[g];
+            m["uyari_dk"] = a.UyariDk.ToString(); m["ertele_dk"] = a.ErteleDk.ToString(); m["ertele_hak"] = a.ErteleHak.ToString(); m["otomatik"] = oto;
+            try { if (Baglanti.Gonder(p.Ip, m, 4000).Tamam) Kaydet(p.Baslik + ": açılış ve kapanış ayarları uygulandı", 1); } catch { }
         }
 
         void BugunKapatma()
@@ -1384,23 +1522,18 @@ namespace Sem.Yonetici
         void AyarlariAc()
         {
             var bu = BuPc()?.SonDurum;
-            string eskiSaat = bu?["sabah_saat"] ?? "", eskiGun = bu?["sabah_gunler"] ?? "";
             bool eskiPay = bu == null || bu["paylasim"] != "0", eskiTel = bu == null || bu["telefon"] != "0";
-            using (var f = new AyarlarForm(YonetimAyar.Oku(), eskiSaat, eskiGun, eskiPay, eskiTel))
+            using (var f = new AyarlarForm(YonetimAyar.Oku(), eskiPay, eskiTel, () => Guvenli(AcilisKapanis)))
             {
                 if (f.ShowDialog(this) != DialogResult.OK) return;
                 if (f.Paylasim != eskiPay || f.Telefon != eskiTel)
                     Uygula("Paylaşım ayarı", AcikHedefler(true), p => { var m = new Mesaj("AYAR"); m["paylasim"] = f.Paylasim ? "1" : "0"; m["telefon"] = f.Telefon ? "1" : "0"; return m; });
-                ayarlar = f.Ayar; ayarlar.Yaz();
+                // Açılış/kapanış bu arada (alt pencereden) kaydedilmiş olabilir: onları koru
+                var y = YonetimAyar.Oku(); var a = f.Ayar;
+                y.Onizleme = a.Onizleme; y.Dosya = a.Dosya; y.Yazici = a.Yazici; y.Program = a.Program; y.Duvar = a.Duvar; y.Duyurular = a.Duyurular;
+                ayarlar = y; ayarlar.Yaz();
                 OzellikleriUygula();
                 if (ayarlar.Onizleme) OnizlemeYenile();
-                if (f.SabahSaat != eskiSaat || (f.SabahSaat != "" && f.SabahGunler != eskiGun))
-                {
-                    sonPlan = null;
-                    var h = AcikHedefler(true);
-                    var m = SabahPlani(f.SabahSaat, f.SabahGunler);
-                    Uygula(f.SabahSaat == "" ? "Sabah açılma kapatıldı" : "Sabah açılma " + f.SabahSaat, h, p => m);
-                }
             }
         }
 
@@ -1416,7 +1549,7 @@ namespace Sem.Yonetici
         /// <summary>Sabah açılma açıksa, listeye yeni bilgisayar eklendiğinde planı açık bilgisayarlara sessizce yeniden gönderir.</summary>
         void SabahPlaniTazele(List<Pc> kopya)
         {
-            if (!ayarlar.Sabah || !oturumAcik && !tepsiModu) return;
+            if (ayarlar.AcKapTanimli || !ayarlar.Sabah || !oturumAcik && !tepsiModu) return;
             var bu = kopya.FirstOrDefault(p => p.Ad.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase))?.SonDurum;
             if (bu == null || bu["sabah_saat"] == "") return;
             var m = SabahPlani(bu["sabah_saat"], bu["sabah_gunler"]);

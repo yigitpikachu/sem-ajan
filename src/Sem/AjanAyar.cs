@@ -37,6 +37,8 @@ namespace Sem.Ajan
         public string SabahSaat = "";       // "08:30"; boşsa kapalı
         public string SabahGunler = "2,3,4,5,6"; // DayOfWeek (0 = Pazar)
         public string SabahMacler = "";     // "AA-BB-..;CC-DD-.."
+        public bool SabahAcilis;            // yönetici bilgisayarı: günün ilk açılışında listedekilere açma sinyali
+        public string SabahAcilisTarih = ""; // o gün gönderildi mi (yyyy-MM-dd)
         public bool WolHazir;               // ağ kartının uyandırma ayarı açıldı mı
 
         // Paylaşım (1.4)
@@ -82,6 +84,8 @@ namespace Sem.Ajan
             if (d.TryGetValue("sabah_saat", out v)) a.SabahSaat = v;
             if (d.TryGetValue("sabah_gunler", out v)) a.SabahGunler = v;
             if (d.TryGetValue("sabah_macler", out v)) a.SabahMacler = v;
+            if (d.TryGetValue("sabah_acilis", out v)) a.SabahAcilis = v == "1";
+            if (d.TryGetValue("sabah_acilis_tarih", out v)) a.SabahAcilisTarih = v;
             if (d.TryGetValue("wol_hazir2", out v)) a.WolHazir = v == "1"; // 1.5.3: uyandırma izni de eklendi, eskiler bir kez yeniden hazırlanır
             if (d.TryGetValue("yonetici", out v)) a.Yonetici = v == "1"; else a.Yonetici = !a.OtomatikKapanma;
             if (d.TryGetValue("gorunen_ad", out v)) a.GorunenAd = v;
@@ -120,6 +124,8 @@ namespace Sem.Ajan
             sb.AppendLine("sabah_saat=" + SabahSaat);
             sb.AppendLine("sabah_gunler=" + SabahGunler);
             sb.AppendLine("sabah_macler=" + SabahMacler);
+            sb.AppendLine("sabah_acilis=" + (SabahAcilis ? "1" : "0"));
+            sb.AppendLine("sabah_acilis_tarih=" + SabahAcilisTarih);
             sb.AppendLine("wol_hazir2=" + (WolHazir ? "1" : "0"));
             sb.AppendLine("yonetici=" + (Yonetici ? "1" : "0"));
             sb.AppendLine("gorunen_ad=" + Tek(GorunenAd));

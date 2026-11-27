@@ -438,6 +438,73 @@ namespace Sem.Yonetici
     }
 
     /// <summary>Yan menü öğesi.</summary>
+    /// <summary>Kenarlıksız ana pencerenin sağ üstündeki Windows tarzı küçült / büyüt / kapat düğmeleri.</summary>
+    class PencereDugmeleri : Control
+    {
+        readonly Form f;
+        int uzerinde = -1, basili = -1;
+        public PencereDugmeleri(Form f)
+        {
+            this.f = f;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent; Size = Tema.S(46 * 3, 32);
+        }
+        int Hangi(Point p) => p.X < 0 || p.Y < 0 || p.Y >= Height ? -1 : Math.Min(2, p.X / (Width / 3));
+        protected override void OnMouseMove(MouseEventArgs e) { int h = Hangi(e.Location); if (h != uzerinde) { uzerinde = h; Invalidate(); } }
+        protected override void OnMouseLeave(EventArgs e) { uzerinde = -1; Invalidate(); }
+        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { basili = Hangi(e.Location); Invalidate(); } }
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            int h = Hangi(e.Location), b = basili; basili = -1; Invalidate();
+            if (e.Button != MouseButtons.Left || h != b) return;
+            if (h == 0) f.WindowState = FormWindowState.Minimized;
+            else if (h == 1) BuyutKucult(f);
+            else if (h == 2) f.Close();
+        }
+
+        public static void BuyutKucult(Form f)
+        {
+            if (f.WindowState == FormWindowState.Maximized) f.WindowState = FormWindowState.Normal;
+            else f.WindowState = FormWindowState.Maximized;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            int w = Width / 3;
+            for (int i = 0; i < 3; i++)
+            {
+                var r = new Rectangle(i * w, 0, w, Height);
+                if (uzerinde == i)
+                {
+                    var c = i == 2 ? Color.FromArgb(basili == i ? 241 : 232, basili == i ? 112 : 17, basili == i ? 122 : 35) : Color.FromArgb(basili == i ? 34 : 18, 0, 0, 0);
+                    using (var b = new SolidBrush(c)) g.FillRectangle(b, r);
+                }
+                var renk = uzerinde == 2 && i == 2 ? Color.White : Renk.Yazi;
+                float cx = r.X + w / 2f, cy = Height / 2f, k = Tema.S(5);
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
+                using (var pen = new Pen(renk, 1f))
+                {
+                    if (i == 0) g.DrawLine(pen, cx - k, cy, cx + k, cy);
+                    else if (i == 1)
+                    {
+                        if (f.WindowState == FormWindowState.Maximized)
+                        {
+                            g.DrawRectangle(pen, cx - k, cy - k + Tema.S(2), k * 2 - Tema.S(2), k * 2 - Tema.S(2));
+                            g.DrawLine(pen, cx - k + Tema.S(2), cy - k, cx + k, cy - k); g.DrawLine(pen, cx + k, cy - k, cx + k, cy + k - Tema.S(2));
+                        }
+                        else g.DrawRectangle(pen, cx - k, cy - k, k * 2, k * 2);
+                    }
+                    else
+                    {
+                        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                        g.DrawLine(pen, cx - k, cy - k, cx + k, cy + k); g.DrawLine(pen, cx + k, cy - k, cx - k, cy + k);
+                    }
+                }
+            }
+        }
+    }
+
     class MenuOgesi : Control
     {
         readonly string ikon;

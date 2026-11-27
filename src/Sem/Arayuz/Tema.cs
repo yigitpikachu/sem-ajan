@@ -194,6 +194,17 @@ namespace Sem.Arayuz
             try { int v = 2; return DwmSetWindowAttribute(h, 33, ref v, 4) == 0; } catch { return false; }
         }
 
+        /// <summary>Kenarlıksız, boyutlandırılabilir pencerede kenara yakın noktayı boyutlandırma koduna çevirir (WM_NCHITTEST).</summary>
+        public static int KenarBul(Form f, Point ekran, int sonuc, int k)
+        {
+            if (sonuc != 1 /* HTCLIENT */ || f.WindowState != FormWindowState.Normal) return sonuc;
+            var p = f.PointToClient(ekran); int w = f.ClientSize.Width, h = f.ClientSize.Height;
+            bool sol = p.X < k, sag = p.X >= w - k, ust = p.Y < k, alt = p.Y >= h - k;
+            if (ust && sol) return 13; if (ust && sag) return 14; if (alt && sol) return 16; if (alt && sag) return 17;
+            if (sol) return 10; if (sag) return 11; if (ust) return 12; if (alt) return 15;
+            return sonuc;
+        }
+
         public static void BaslikRengi(IntPtr h, Color c)
         {
             if (!Win11) return;

@@ -103,7 +103,7 @@ namespace Sem.Ajan
             try { EkranBekci(); } catch (Exception e) { Gunluk.Yaz("Ekran: " + e.Message); }
             try { GuncellemeKontrol(); } catch (Exception e) { Gunluk.Yaz("Güncelleme: " + e.Message); }
             try { SabahKontrol(); } catch (Exception e) { Gunluk.Yaz("Sabah: " + e.Message); }
-            if (!wolDenendi && ayar.SabahSaat != "" && !ayar.WolHazir) { wolDenendi = true; WolHazirla(); } // güncellemeden sonra bir kez
+            if (!wolDenendi && ayar.SabahMacler != "" && !ayar.WolHazir) { wolDenendi = true; WolHazirla(); } // güncellemeden sonra bir kez
             try { YaziciKilitKontrol(); } catch (Exception e) { Gunluk.Yaz("Yazıcı kilidi: " + e.Message); }
             try { paylasim?.OrtakKontrol(); } catch (Exception e) { Gunluk.Yaz("Ortak: " + e.Message); }
             try { KilitTasarimi(); } catch { }
@@ -112,23 +112,42 @@ namespace Sem.Ajan
         }
 
         // ---------------------------------------------------------------- Sabah açılma
-        bool SabahPlaniVar(out TimeSpan saat)
-        {
-            saat = TimeSpan.Zero;
-            return !string.IsNullOrEmpty(ayar.SabahSaat) && ayar.SabahMacler != "" && TimeSpan.TryParse(ayar.SabahSaat, out saat);
-        }
+        DateTime acilisSinyaliBitis = DateTime.MinValue;
+        bool acilisDenetlendi;
 
-        /// <summary>Planlanan saatte listedeki bilgisayarlara üç dakika boyunca aralıklı açma sinyali gönderir.</summary>
+        /// <summary>
+        /// Listedeki bilgisayarlara üç dakika boyunca aralıklı açma sinyali gönderir:
+        /// planlanan saatte (bu bilgisayar o saatte açıksa) ve yönetici bilgisayarında günün ilk açılışında.
+        /// İkisi de yalnızca seçili (merkezin açık olduğu) günlerde.
+        /// </summary>
         void SabahKontrol()
         {
-            TimeSpan saat;
-            if (!SabahPlaniVar(out saat)) return;
+            if (string.IsNullOrWhiteSpace(ayar.SabahMacler)) return;
+            TimeSpan saat = TimeSpan.Zero;
+            bool saatVar = !string.IsNullOrEmpty(ayar.SabahSaat) && TimeSpan.TryParse(ayar.SabahSaat, out saat);
             // Otomatik kapanmayan (yönetici) bilgisayar gece uykuya geçmesin ki sabah sinyali gönderebilsin.
-            if (!ayar.OtomatikKapanma) Yerel.SetThreadExecutionState(Yerel.ES_SYSTEM_REQUIRED);
+            if (saatVar && !ayar.OtomatikKapanma) Yerel.SetThreadExecutionState(Yerel.ES_SYSTEM_REQUIRED);
             var simdi = DateTime.Now;
-            if (!ayar.SabahGunler.Split(',').Contains(((int)simdi.DayOfWeek).ToString())) return;
-            var bas = simdi.Date + saat;
-            if (simdi < bas || simdi > bas.AddMinutes(3) || (simdi - sonSabahSinyal).TotalSeconds < 30) return;
+            bool acikGun = ayar.SabahGunler.Split(',').Contains(((int)simdi.DayOfWeek).ToString());
+
+            // Yönetici bilgisayarı sabah açılınca: Windows açılalı 20 dakikadan az olduysa ve bugün henüz gönderilmediyse
+            if (!acilisDenetlendi)
+            {
+                acilisDenetlendi = true;
+                double acikDk = 0; try { acikDk = Yerel.GetTickCount64() / 60000.0; } catch { acikDk = 999; }
+                var bugun = simdi.ToString("yyyy-MM-dd");
+                if (ayar.SabahAcilis && ayar.Yonetici && acikGun && acikDk < 20 && ayar.SabahAcilisTarih != bugun)
+                {
+                    acilisSinyaliBitis = simdi.AddMinutes(3);
+                    AyarDegistir(a => a.SabahAcilisTarih = bugun);
+                    Gunluk.Yaz("Bu bilgisayar açıldı, diğerlerine açma sinyali gönderiliyor");
+                }
+            }
+
+            if (!acikGun) return;
+            bool gonder = simdi <= acilisSinyaliBitis;
+            if (saatVar) { var bas = simdi.Date + saat; if (simdi >= bas && simdi <= bas.AddMinutes(3)) gonder = true; }
+            if (!gonder || (simdi - sonSabahSinyal).TotalSeconds < 30) return;
             if (sonSabahSinyal.Date != simdi.Date) Gunluk.Yaz("Sabah açılma sinyali gönderiliyor");
             sonSabahSinyal = simdi;
             foreach (var mac in ayar.SabahMacler.Split(';').Where(x => x.Trim() != ""))
@@ -483,10 +502,11 @@ namespace Sem.Ajan
                     lock (kilit)
                     {
                         ayar.SabahSaat = m["saat"]; ayar.SabahGunler = m["gunler"]; ayar.SabahMacler = m["macler"];
+                        if (m.Alan.ContainsKey("acilis")) ayar.SabahAcilis = m["acilis"] == "1";
                         ayar.Yaz();
                     }
-                    if (ayar.SabahSaat != "" && !ayar.WolHazir) WolHazirla();
-                    return Mesaj.Basari(ayar.SabahSaat == "" ? "Sabah açılma kapatıldı" : "Sabah açılma " + ayar.SabahSaat + " olarak kaydedildi");
+                    if (ayar.SabahMacler != "" && !ayar.WolHazir) WolHazirla();
+                    return Mesaj.Basari(ayar.SabahSaat == "" && !ayar.SabahAcilis ? "Sabah açılma kapatıldı" : "Sabah açılma kaydedildi");
 
                 case "KILITLE":
                     return EkranaGonder("KILITLE") ? Mesaj.Basari("Kilitlendi") : Mesaj.Hata("Ekranda açık oturum yok");
@@ -670,6 +690,7 @@ namespace Sem.Ajan
             r["otomatik"] = ayar.OtomatikKapanma ? "1" : "0";
             r["oto_guncelle"] = ayar.OtoGuncelle ? "1" : "0";
             r["sabah_saat"] = ayar.SabahSaat; r["sabah_gunler"] = ayar.SabahGunler;
+            r["sabah_macler"] = ayar.SabahMacler; r["sabah_acilis"] = ayar.SabahAcilis ? "1" : "0";
             r["gorunen"] = ayar.GorunenAd; r["grup"] = ayar.Grup; r["grup_ad"] = ayar.GrupAd; r["simge"] = ayar.Simge;
             r["duvar_kip"] = ayar.DuvarKip;
             r["ekran_izni"] = ayar.EkranIzni ? "1" : "0";
