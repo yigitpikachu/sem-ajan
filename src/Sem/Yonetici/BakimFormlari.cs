@@ -324,16 +324,11 @@ namespace Sem.Yonetici
         public static readonly (string Id, string Ad, string Desen, string Aciklama)[] Katalog =
         {
             ("Google.Chrome", "Google Chrome", "Google Chrome", "İnternet tarayıcısı"),
-            ("Mozilla.Firefox", "Mozilla Firefox", "Mozilla Firefox", "İnternet tarayıcısı"),
+            ("Microsoft.Office", "Microsoft 365 (Office)", "Microsoft 365", "Word, Excel, PowerPoint"),
             ("Adobe.Acrobat.Reader.64-bit", "Adobe Acrobat Reader", "Adobe Acrobat", "PDF okuyucu"),
             ("Zoom.Zoom", "Zoom", "Zoom", "Görüntülü görüşme"),
             ("7zip.7zip", "7-Zip", "7-Zip", "Sıkıştırılmış dosyalar (zip, rar)"),
-            ("RARLab.WinRAR", "WinRAR", "WinRAR", "Sıkıştırılmış dosyalar"),
             ("VideoLAN.VLC", "VLC", "VLC media player", "Video ve müzik oynatıcı"),
-            ("TheDocumentFoundation.LibreOffice", "LibreOffice", "LibreOffice", "Ücretsiz ofis programları"),
-            ("AnyDeskSoftwareGmbH.AnyDesk", "AnyDesk", "AnyDesk", "Uzak destek"),
-            ("Notepad++.Notepad++", "Notepad++", "Notepad++", "Metin düzenleyici"),
-            ("Microsoft.Teams", "Microsoft Teams", "Microsoft Teams", "Toplantı ve sohbet"),
         };
 
         public (string id, string ad, bool guncelle, List<Pc> hedefler, bool dosyadan)? Sonuc;
