@@ -127,7 +127,7 @@ namespace Sem.Ajan
                 if (d.Name.Equals(Toplama, StringComparison.OrdinalIgnoreCase)) { kod = "K"; neden = "Toplama klasörü"; return; }
                 bool bos = !d.EnumerateFiles("*", SearchOption.AllDirectories).Any();
                 if (bos && d.LastWriteTime < sinir) { kod = "S"; neden = "Boş klasör"; return; }
-                if (SurucuKlasoru.IsMatch(d.Name) && d.LastWriteTime < sinir) { kod = "S"; neden = "Sürücü paketi"; return; }
+                if (SurucuKlasoru.IsMatch(d.Name) || IcindeInfVar(d)) { kod = "S"; neden = "Sürücü paketi"; return; }
                 // Kaydedilmiş web sayfasının "_files" klasörü sayfasıyla birlikte toplanır
                 if (d.Name.EndsWith("_files", StringComparison.OrdinalIgnoreCase))
                 {
@@ -153,6 +153,7 @@ namespace Sem.Ajan
             if (f.Length == 0) { kod = "S"; neden = "Boş dosya"; return; }
             if (uz == ".bat" || uz == ".cmd" || uz == ".vbs" || uz == ".ps1") { kod = "S"; neden = "Komut dosyası"; return; }
 
+            if ((uz == ".exe" || uz == ".zip" || uz == ".msi") && SurucuKlasoru.IsMatch(adsiz)) { kod = "S"; neden = "Sürücü kurulumu"; return; }
             bool yeni = Yeni(f, son, sinir);
             if (uz == ".msi" || (uz == ".exe" && Kurulum.IsMatch(adsiz)))
             {
@@ -165,6 +166,12 @@ namespace Sem.Ajan
             string kat;
             if (!Turler.TryGetValue(uz, out kat)) kat = "Diğer";
             kod = "T"; neden = "Eski dosya"; hedef = Toplama + "\\" + kat;
+        }
+
+        /// <summary>Klasörde sürücü dosyası (.inf) var mı: yazıcı vb. sürücü paketleri masaüstünde kalmaz.</summary>
+        static bool IcindeInfVar(DirectoryInfo d)
+        {
+            try { return d.EnumerateFiles("*.inf", SearchOption.AllDirectories).Take(1).Any(); } catch { return false; }
         }
 
         /// <summary>Son günlerde değiştirildi ya da açıldı mı (açılma: kullanıcının son kullanılanlar listesi; erişim tarihine güvenilmez).</summary>
