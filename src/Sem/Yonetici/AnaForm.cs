@@ -58,6 +58,8 @@ namespace Sem.Yonetici
             BackColor = Renk.Zemin; Font = Tema.Yazi(10f); DoubleBuffered = true;
             // Kenarlıksız, yuvarlak köşeli pencere: kendi küçült/büyüt/kapat düğmeleri, kenardan boyutlandırma
             FormBorderStyle = FormBorderStyle.None; Padding = new Padding(Kenar);
+            // Kenara yakın fare olayları (iç denetimlerin üstünde olsa bile) pencereyi boyutlandırır
+            Application.AddMessageFilter(new KenarFiltresi(this, () => Tema.S(7)));
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             // ------------------------------------------------ Yan menü
@@ -1613,6 +1615,36 @@ namespace Sem.Yonetici
             sonPlan = imza;
             foreach (var p in kopya.Where(x => x.Acik))
                 try { Baglanti.Gonder(p.Ip, m, 4000); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Çerçevesiz pencerede kenardan boyutlandırma: kenarın birkaç piksel yakınındaki fare olayları hangi denetimin
+    /// üstünde olursa olsun yakalanır; imleç değişir, basınca Windows'un kendi boyutlandırması başlar.
+    /// </summary>
+    class KenarFiltresi : IMessageFilter
+    {
+        readonly Form f; readonly Func<int> pay;
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool ReleaseCapture();
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
+        public KenarFiltresi(Form f, Func<int> pay) { this.f = f; this.pay = pay; }
+
+        public bool PreFilterMessage(ref Message m)
+        {
+            if (m.Msg != 0x200 && m.Msg != 0x201) return false; // WM_MOUSEMOVE, WM_LBUTTONDOWN
+            if (f.IsDisposed || !f.Visible || f.WindowState != FormWindowState.Normal || Form.ActiveForm != f) return false;
+            var c = Control.FromHandle(m.HWnd);
+            if (c == null || (c != f && c.FindForm() != f)) return false;
+            int ht = Tema.KenarBul(f, Cursor.Position, 1, pay());
+            if (ht == 1) return false;
+            if (m.Msg == 0x200)
+            {
+                Cursor.Current = ht == 10 || ht == 11 ? Cursors.SizeWE : ht == 12 || ht == 15 ? Cursors.SizeNS : ht == 13 || ht == 17 ? Cursors.SizeNWSE : Cursors.SizeNESW;
+                return true;
+            }
+            ReleaseCapture();
+            SendMessage(f.Handle, 0xA1, (IntPtr)ht, IntPtr.Zero); // WM_NCLBUTTONDOWN
+            return true;
         }
     }
 }
