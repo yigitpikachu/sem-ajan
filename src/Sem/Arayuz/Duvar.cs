@@ -37,6 +37,36 @@ namespace Sem.Arayuz
             return Kurumsal();
         }
 
+        /// <summary>
+        /// Karanlık tema sürümü: aynı tasarım, gece mavisi zemin. Vurgu rengi zeminin tonunu belirler,
+        /// lekeler koyu zeminde yumuşak birer ışık gibi durur; yazılar saf beyaz değil, gözü yormayan kırık beyaz.
+        /// </summary>
+        public static Tasarim Koyulastir(Tasarim t)
+        {
+            if (t.Koyu) return t;
+            var gece = Color.FromArgb(13, 16, 23);
+            return new Tasarim
+            {
+                Kod = t.Kod, Ust = t.Ust, Baslik = t.Baslik, Alt = t.Alt, Motif = t.Motif, BuyukTarih = t.BuyukTarih, Tarih = t.Tarih,
+                Koyu = true,
+                Zemin = Karistir(gece, t.Vurgu, 0.05),
+                Yazi = Color.FromArgb(232, 234, 239),
+                Yazi2 = Color.FromArgb(140, 148, 162),
+                Vurgu = Karistir(t.Vurgu, Color.White, 0.12),
+                // Lekeler: rengi doygunlaştırılıp karartılır (griye kaçmasın), koyu zeminde derin bir ışıma olur
+                Lekeler = t.Lekeler.Select(c => Kis(Doygun(c, 1.6), 0.42)).ToArray(),
+            };
+        }
+
+        static Color Kis(Color c, double k) => Color.FromArgb((int)(c.R * k), (int)(c.G * k), (int)(c.B * k));
+
+        static Color Doygun(Color c, double k)
+        {
+            double ort = (c.R + c.G + c.B) / 3.0;
+            Func<double, int> s = v => (int)Math.Max(0, Math.Min(255, ort + (v - ort) * k));
+            return Color.FromArgb(s(c.R), s(c.G), s(c.B));
+        }
+
         public static Tasarim Kurumsal() => new Tasarim
         {
             Kod = "kurumsal", Ust = Kurum, Baslik = "Sevgi ve Emek\nile Mutluluk", Alt = "",
@@ -163,12 +193,11 @@ namespace Sem.Arayuz
                 var yaziRenk = new SolidBrush(t.Yazi); var yazi2 = new SolidBrush(t.Yazi2); var vurgu = new SolidBrush(t.Vurgu);
                 var sf = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Near };
 
-                // Logo: cam kart üzerinde
-                float lk = 124 * s;
-                var lr = new RectangleF(sol, y, lk, lk);
-                Cam(g, lr, 30 * s, false);
-                if (logo != null) g.DrawImage(logo, RectangleF.Inflate(lr, -14 * s, -14 * s));
-                y += lk + 40 * s;
+                // Logo: kartsız, doğrudan zeminde. Koyu tasarımda tek renk (kırık beyaz), açıkta kendi renkleriyle.
+                float lk = 120 * s;
+                var lr = new RectangleF(sol - 6 * s, y, lk, lk);
+                if (logo != null) LogoCiz(g, logo, lr, t.Koyu && LogoTekRenk ? t.Yazi : (Color?)null, t.Koyu ? 0.92f : 1f);
+                y += lk + 34 * s;
 
                 if (t.BuyukTarih && t.Tarih != "")
                 {
@@ -204,6 +233,27 @@ namespace Sem.Arayuz
                 yaziRenk.Dispose(); yazi2.Dispose(); vurgu.Dispose(); sf.Dispose();
             }
             return bmp;
+        }
+
+        /// <summary>Önizleme için: koyu tasarımda logo tek renk mi çizilsin.</summary>
+        public static bool LogoTekRenk = true;
+
+        static void LogoCiz(Graphics g, Image logo, RectangleF r, Color? tekRenk, float opaklik)
+        {
+            using (var ia = new ImageAttributes())
+            {
+                ColorMatrix cm;
+                if (tekRenk is Color c)
+                    cm = new ColorMatrix(new[]
+                    {
+                        new float[] { 0, 0, 0, 0, 0 }, new float[] { 0, 0, 0, 0, 0 }, new float[] { 0, 0, 0, 0, 0 },
+                        new float[] { 0, 0, 0, opaklik, 0 },
+                        new float[] { c.R / 255f, c.G / 255f, c.B / 255f, 0, 1 },
+                    });
+                else cm = new ColorMatrix { Matrix33 = opaklik };
+                ia.SetColorMatrix(cm);
+                g.DrawImage(logo, Rectangle.Round(r), 0, 0, logo.Width, logo.Height, GraphicsUnit.Pixel, ia);
+            }
         }
 
         /// <summary>Yumuşak renk lekeleri: küçük çizilip büyütülür, doğal bir bulanıklık verir.</summary>
