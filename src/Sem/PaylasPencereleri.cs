@@ -337,7 +337,8 @@ namespace Sem.Ajan
             Icerik.Controls.Add(bas);
 
             liste = new FlowLayoutPanel { Location = new Point(-Tema.S(4), Tema.S(198)), Size = new Size(g + Tema.S(8), Icerik.Height - Tema.S(198 + 60)), AutoScroll = true, BackColor = Renk.Zemin, Padding = new Padding(0) };
-            Icerik.Controls.Add(liste);
+            var listeKutu = InceKaydirma.Sar(liste); listeKutu.SetBounds(-Tema.S(4), Tema.S(198), g + Tema.S(8), Icerik.Height - Tema.S(198 + 60));
+            Icerik.Controls.Add(listeKutu);
 
             durum = Yazi.Etiket("Cihazlar aranıyor…", 9f, false, Renk.Yazi2, false);
             durum.SetBounds(0, Icerik.Height - Tema.S(40), g - Tema.S(260), Tema.S(40)); durum.TextAlign = ContentAlignment.MiddleLeft;

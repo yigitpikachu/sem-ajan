@@ -190,7 +190,7 @@ namespace Sem.Yonetici
     class BilgiForm : ModernForm
     {
         readonly Pc pc;
-        readonly Panel govde;
+        readonly Panel govde, kutu;
         readonly Label durum;
         Mesaj veri;
 
@@ -198,13 +198,14 @@ namespace Sem.Yonetici
         {
             this.pc = pc;
             int g = Icerik.Width;
-            govde = new Panel { Location = new Point(0, 0), Size = new Size(g, Icerik.Height - Tema.S(52)), AutoScroll = true, BackColor = Renk.Zemin };
+            govde = new Panel { AutoScroll = true, BackColor = Renk.Zemin };
+            kutu = InceKaydirma.Sar(govde); kutu.SetBounds(0, 0, g, Icerik.Height - Tema.S(52));
             durum = Yazi.Etiket("Bilgiler alınıyor…", 9.5f, false, Renk.Yazi2, false);
             durum.SetBounds(0, Icerik.Height - Tema.S(40), g - Tema.S(160), Tema.S(40)); durum.TextAlign = ContentAlignment.MiddleLeft;
             var aktar = new Buton("Dışa aktar", Ik.Indir, ButonTuru.Ikincil);
             aktar.Location = new Point(g - aktar.Width, Icerik.Height - aktar.Height);
             aktar.Click += (s, e) => DisaAktar();
-            Icerik.Controls.AddRange(new Control[] { govde, durum, aktar });
+            Icerik.Controls.AddRange(new Control[] { kutu, durum, aktar });
             Shown += (s, e) => Task.Run(() =>
             {
                 try
@@ -218,7 +219,7 @@ namespace Sem.Yonetici
 
         void Doldur()
         {
-            int g = govde.Width - SystemInformation.VerticalScrollBarWidth - Tema.S(4), y = 0;
+            int g = kutu.ClientSize.Width - Tema.S(26), y = 0;
             void Satir(string ad, string deger)
             {
                 if (string.IsNullOrWhiteSpace(deger)) return;
@@ -309,7 +310,7 @@ namespace Sem.Yonetici
             foreach (var k in Katalog) liste.Items.Add(k.Ad);
             liste.DrawItem += CizOge;
             liste.SelectedIndexChanged += (s, e) => Guncelle();
-            kart.Controls.Add(liste);
+            kart.Controls.Add(InceKaydirma.Sar(liste));
             durum = Yazi.Etiket("Bilgisayarlardaki programlara bakılıyor…", 9.5f, false, Renk.Yazi2, false);
             durum.SetBounds(0, kart.Bottom + Tema.S(10), g, Tema.S(70));
             var dosyadan = new Buton("Dosyadan kur…", Ik.Belge, ButonTuru.Sade);
