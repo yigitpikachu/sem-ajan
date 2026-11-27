@@ -32,8 +32,8 @@ namespace Sem.Ajan
             T("Arşivler", "zip rar 7z tar gz");
         }
 
-        static readonly Regex Kurulum = new Regex(@"setup|install|kurulum|yükle|yukle|_x64|_x86|driver|sürücü|surucu|pcl6", RegexOptions.IgnoreCase);
-        static readonly Regex SurucuKlasoru = new Regex(@"driver|sürücü|surucu|drİver|pcl6", RegexOptions.IgnoreCase);
+        static readonly Regex Kurulum = new Regex(@"setup|install|kurulum|yükle|yukle|_x64|_x86|driver|sürücü|surucu|pcl6", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        static readonly Regex SurucuKlasoru = new Regex(@"driver|sürücü|surucu|drİver|pcl6", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         static readonly string[] Cop = { ".tmp", ".crdownload", ".part", ".partial", ".download", ".bak", ".old" };
 
         /// <summary>Bilgisayardaki kullanıcı masaüstleri (ortak masaüstü hariç).</summary>
