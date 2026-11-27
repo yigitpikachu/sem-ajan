@@ -334,6 +334,7 @@ namespace Sem.Yonetici
 
         public (string id, string ad, bool guncelle, List<Pc> hedefler, bool dosyadan)? Sonuc;
         public bool Kaldir;
+        public List<(string id, string ad, List<Pc> hedefler)> Isler = new List<(string, string, List<Pc>)>();
         readonly ConcurrentDictionary<Pc, HashSet<string>> tum = new ConcurrentDictionary<Pc, HashSet<string>>();
         List<string> tumAdlar = new List<string>();
         readonly Dictionary<string, string> surumler = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -356,7 +357,7 @@ namespace Sem.Yonetici
             var ust = Yazi.Etiket(hedefler.Count == 1 ? hedefler[0].Baslik : hedefler.Count + " bilgisayar seçili", 9.5f, false, Renk.Yazi2, false);
             ust.SetBounds(g - Tema.S(170), Tema.S(8), Tema.S(170), Tema.S(24)); ust.TextAlign = ContentAlignment.TopRight;
             var kart = new KartPanel { Location = new Point(0, Tema.S(46)), Size = new Size(g, Icerik.Height - Tema.S(46 + 140)), Padding = Tema.Pd(6, 8, 6, 8), BackColor = Renk.Zemin, Golge = false };
-            liste = new ListBox { Dock = DockStyle.Fill, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = Tema.S(46), BorderStyle = BorderStyle.None, BackColor = Renk.Yuzey, IntegralHeight = false };
+            liste = new ListBox { Dock = DockStyle.Fill, SelectionMode = SelectionMode.MultiSimple, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = Tema.S(46), BorderStyle = BorderStyle.None, BackColor = Renk.Yuzey, IntegralHeight = false };
             foreach (var k in Katalog) liste.Items.Add(k.Ad);
             liste.DrawItem += CizOge;
             liste.SelectedIndexChanged += (s, e) => Guncelle();
@@ -406,7 +407,7 @@ namespace Sem.Yonetici
             });
             yuklendi = true;
             tumAdlar = tum.Values.SelectMany(x => x).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.Create(new System.Globalization.CultureInfo("tr-TR"), true)).ToList();
-            try { BeginInvoke((Action)(() => { if (kaldirModu) ModDegisti(); liste.Invalidate(); if (liste.SelectedIndex < 0) durum.Text = "Kurmak ya da güncellemek istediğiniz programı seçin."; else Guncelle(); })); } catch { }
+            try { BeginInvoke((Action)(() => { if (kaldirModu) ModDegisti(); liste.Invalidate(); Guncelle(); })); } catch { }
         }
 
         int KuruluSayisi(string id) => kurulu.Count(kv => kv.Value.ContainsKey(id));
@@ -462,51 +463,62 @@ namespace Sem.Yonetici
             durum.Text = !yuklendi ? "Bilgisayarlardaki programlara bakılıyor…" : kaldirModu ? "Kaldırmak istediğiniz programı seçin. Kaldırma sessiz yapılır, sonucu Etkinlik sayfasında görünür." : "Kurmak ya da güncellemek istediğiniz programı seçin.";
         }
 
+        List<int> Secili() => liste.SelectedIndices.Cast<int>().ToList();
+
         void KaldirBitir()
         {
-            if (!kaldirModu || liste.SelectedIndex < 0 || liste.SelectedIndex >= tumAdlar.Count) return;
-            var ad = tumAdlar[liste.SelectedIndex];
-            var h = tum.Where(kv => kv.Value.Contains(ad)).Select(kv => kv.Key).ToList();
-            if (h.Count == 0) return;
-            Kaldir = true; Sonuc = (null, ad, false, h, false);
+            if (!kaldirModu) return;
+            Isler = Secili().Where(i => i < tumAdlar.Count).Select(i => tumAdlar[i])
+                .Select(ad => ((string)null, ad, tum.Where(kv => kv.Value.Contains(ad)).Select(kv => kv.Key).ToList())).Where(x => x.Item3.Count > 0).ToList();
+            if (Isler.Count == 0) return;
+            Kaldir = true; Sonuc = (null, null, false, null, false);
             Close();
         }
 
         void Guncelle()
         {
+            var sec = Secili();
             if (kaldirModu)
             {
-                if (liste.SelectedIndex < 0 || !yuklendi || liste.SelectedIndex >= tumAdlar.Count) return;
-                var ad = tumAdlar[liste.SelectedIndex];
-                var h = tum.Where(kv => kv.Value.Contains(ad)).Select(kv => kv.Key.Baslik).ToList();
-                durum.Text = "Kaldırılacak: " + ad + "\n" + string.Join(", ", h) + "\nKaldırmak için \"Kaldır\"ı basılı tutun.";
-                durum.ForeColor = Renk.Yazi2;
-                kaldir.Enabled = h.Count > 0; kaldir.Invalidate();
+                if (!yuklendi) return;
+                var adlar = sec.Where(i => i < tumAdlar.Count).Select(i => tumAdlar[i]).ToList();
+                if (adlar.Count == 0) { durum.Text = "Kaldırmak istediğiniz programları seçin (birden çok seçebilirsiniz)."; kaldir.Enabled = false; kaldir.Invalidate(); return; }
+                var sb = new StringBuilder("Kaldırılacak (" + adlar.Count + "):\n");
+                foreach (var ad in adlar.Take(4)) sb.Append("• " + ad + "  ·  " + string.Join(", ", tum.Where(kv => kv.Value.Contains(ad)).Select(kv => kv.Key.Baslik)) + "\n");
+                if (adlar.Count > 4) sb.Append("… ve " + (adlar.Count - 4) + " program daha");
+                durum.Text = sb.ToString().Trim(); durum.ForeColor = Renk.Yazi2;
+                kaldir.Text = adlar.Count > 1 ? adlar.Count + " programı kaldır" : "Kaldır"; kaldir.BoyutAyarla(); kaldir.Width = Math.Max(kaldir.Width, Tema.S(120)); kaldir.Left = Icerik.Width - kaldir.Width;
+                kaldir.Enabled = true; kaldir.Invalidate();
                 return;
             }
-            if (liste.SelectedIndex < 0 || !yuklendi) return;
-            var k = Katalog[liste.SelectedIndex];
-            var var_ = kurulu.Where(kv => kv.Value.ContainsKey(k.Id)).Select(kv => kv.Key).ToList();
-            var yok = kurulu.Where(kv => !kv.Value.ContainsKey(k.Id) && !hata.ContainsKey(kv.Key)).Select(kv => kv.Key).ToList();
-            var sb = new StringBuilder();
-            if (var_.Count > 0) sb.Append("Zaten kurulu: " + string.Join(", ", var_.Select(p => p.Baslik + (kurulu[p][k.Id].surum != "" ? " (" + kurulu[p][k.Id].surum + ")" : ""))) + ". Bunlara yeniden kurulmaz, Güncelle ile en yeni sürüme geçer.\n");
-            if (yok.Count > 0) sb.Append("Kurulacak: " + string.Join(", ", yok.Select(p => p.Baslik)) + "\n");
+            if (!yuklendi) return;
+            var ks = sec.Select(i => Katalog[i]).ToList();
+            if (ks.Count == 0) { durum.Text = "Kurmak ya da güncellemek istediğiniz programları seçin (birden çok seçebilirsiniz)."; durum.ForeColor = Renk.Yazi2; kur.Enabled = guncelle.Enabled = false; kur.Invalidate(); guncelle.Invalidate(); return; }
+            int kurulacak = 0, guncellenecek = 0;
+            var sb2 = new StringBuilder();
+            foreach (var k in ks)
+            {
+                var var_ = kurulu.Where(kv => kv.Value.ContainsKey(k.Id) && !hata.ContainsKey(kv.Key)).Select(kv => kv.Key).ToList();
+                var yok = kurulu.Where(kv => !kv.Value.ContainsKey(k.Id) && !hata.ContainsKey(kv.Key)).Select(kv => kv.Key).ToList();
+                kurulacak += yok.Count; guncellenecek += var_.Count;
+                sb2.Append("• " + k.Ad + ": " + (yok.Count > 0 ? "kurulacak " + yok.Count : "") + (yok.Count > 0 && var_.Count > 0 ? ", " : "") + (var_.Count > 0 ? "kurulu " + var_.Count : "") + "\n");
+            }
             var sorun = hata.Where(kv => kv.Value != "").Select(kv => kv.Key.Baslik + " (" + kv.Value + ")").ToList();
-            if (sorun.Count > 0) sb.Append("Atlanacak: " + string.Join(", ", sorun));
-            durum.Text = sb.ToString().Trim();
-            durum.ForeColor = var_.Count > 0 ? Renk.Turuncu : Renk.Yazi2;
-            kur.Enabled = yok.Count > 0; kur.Text = yok.Count == 0 && var_.Count > 0 ? "Hepsinde kurulu" : "Kur"; kur.BoyutAyarla(); kur.Width = Math.Max(kur.Width, Tema.S(110));
+            if (sorun.Count > 0) sb2.Append("Atlanacak: " + string.Join(", ", sorun));
+            durum.Text = sb2.ToString().Trim(); durum.ForeColor = Renk.Yazi2;
+            kur.Enabled = kurulacak > 0; kur.Text = kurulacak == 0 && guncellenecek > 0 ? "Hepsinde kurulu" : "Kur"; kur.BoyutAyarla(); kur.Width = Math.Max(kur.Width, Tema.S(110));
             kur.Left = Icerik.Width - kur.Width; guncelle.Left = kur.Left - guncelle.Width - Tema.S(8);
-            guncelle.Enabled = var_.Count > 0 && var_.Any(p => !hata.ContainsKey(p));
+            guncelle.Enabled = guncellenecek > 0;
             kur.Invalidate(); guncelle.Invalidate();
         }
 
         void Bitir(bool guncelle_)
         {
-            if (liste.SelectedIndex < 0) return;
-            var k = Katalog[liste.SelectedIndex];
-            var h = kurulu.Where(kv => kv.Value.ContainsKey(k.Id) == guncelle_ && !hata.ContainsKey(kv.Key)).Select(kv => kv.Key).ToList();
-            Sonuc = (k.Id, k.Ad, guncelle_, h, false);
+            Isler = Secili().Select(i => Katalog[i])
+                .Select(k => (k.Id, k.Ad, kurulu.Where(kv => kv.Value.ContainsKey(k.Id) == guncelle_ && !hata.ContainsKey(kv.Key)).Select(kv => kv.Key).ToList()))
+                .Where(x => x.Item3.Count > 0).ToList();
+            if (Isler.Count == 0) return;
+            Sonuc = (null, null, guncelle_, null, false);
             Close();
         }
     }

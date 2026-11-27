@@ -255,7 +255,14 @@ namespace Sem.Ajan
         }
 
         /// <summary>Programı adıyla bulup sessiz kaldırır (makine geneli: hizmet olarak; kullanıcıya kurulu: ekrandaki oturumda).</summary>
+        static readonly object sira = new object(); // kurulum ve kaldırmalar aynı anda değil, sırayla
+
         public static string Kaldir(string ad)
+        {
+            lock (sira) return KaldirSirali(ad);
+        }
+
+        static string KaldirSirali(string ad)
         {
             var kayitlar = Bul(ad);
             if (kayitlar.Count == 0) return "zaten kurulu değil";
@@ -295,6 +302,11 @@ namespace Sem.Ajan
         }
 
         public static string WingetCalistir(string islem, string id)
+        {
+            lock (sira) return WingetSirali(islem, id);
+        }
+
+        static string WingetSirali(string islem, string id)
         {
             var exe = Winget();
             if (exe == null) return "HATA: winget yok";

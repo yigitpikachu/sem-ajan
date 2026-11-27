@@ -1318,15 +1318,11 @@ namespace Sem.Yonetici
                 f.ShowDialog(this);
                 if (f.Sonuc == null) return;
                 if (f.Sonuc.Value.dosyadan) { DosyadanKur(h); return; }
-                if (f.Kaldir)
+                foreach (var (id, ad, hedefler) in f.Isler)
                 {
-                    var kad = f.Sonuc.Value.ad;
-                    Uygula("Kaldır: " + kad, f.Sonuc.Value.hedefler, p => { var m = new Mesaj("PROGRAM_KALDIR"); m["ad"] = kad; return m; });
-                    return;
+                    if (f.Kaldir) Uygula("Kaldır: " + ad, hedefler, p => { var m = new Mesaj("PROGRAM_KALDIR"); m["ad"] = ad; return m; });
+                    else { var gn = f.Sonuc.Value.guncelle; Uygula((gn ? "Güncelle: " : "Kur: ") + ad, hedefler, p => { var m = new Mesaj("PROGRAM_WINGET"); m["id"] = id; m["ad"] = ad; m["islem"] = gn ? "guncelle" : "kur"; return m; }); }
                 }
-                var (id, ad, guncelle, hedefler) = (f.Sonuc.Value.id, f.Sonuc.Value.ad, f.Sonuc.Value.guncelle, f.Sonuc.Value.hedefler);
-                if (hedefler.Count == 0) return;
-                Uygula((guncelle ? "Güncelle: " : "Kur: ") + ad, hedefler, p => { var m = new Mesaj("PROGRAM_WINGET"); m["id"] = id; m["ad"] = ad; m["islem"] = guncelle ? "guncelle" : "kur"; return m; });
             }
         }
 
