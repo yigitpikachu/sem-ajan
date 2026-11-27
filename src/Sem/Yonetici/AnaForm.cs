@@ -47,8 +47,11 @@ namespace Sem.Yonetici
 
         public AnaForm() : this(false, null) { }
 
-        public AnaForm(bool tepsiModu, EventWaitHandle gosterSinyali)
+        readonly string acJetonu;
+
+        public AnaForm(bool tepsiModu, EventWaitHandle gosterSinyali, string acJetonu = "")
         {
+            this.acJetonu = acJetonu ?? "";
             this.tepsiModu = tepsiModu; gorunurIzin = !tepsiModu;
             Text = "Sem Ajan";
             StartPosition = FormStartPosition.CenterScreen; ClientSize = Tema.S(1240, 800); MinimumSize = Tema.S(980, 640);
@@ -230,6 +233,39 @@ namespace Sem.Yonetici
             if (ayar.Anahtar == null) { Cik(); return; }
             Baglanti.Anahtar = ayar.Anahtar; // durum için; işlem yapmadan önce şifre sorulur
             Basla();
+            // Güncelleme sonrası yeniden açılış: pencere açıktıysa şifre sormadan geri gelsin
+            if (acJetonu != "" && JetonGecerli(acJetonu)) { oturumAcik = true; PaneliAc(); Tost("Sem Ajan " + Sabitler.Surum + " sürümüne geçildi."); }
+        }
+
+        static string JetonDosyasi => Path.Combine(Depo.Klasor, "yeniden.jeton");
+
+        static bool JetonGecerli(string jeton)
+        {
+            try
+            {
+                if (!File.Exists(JetonDosyasi)) return false;
+                bool taze = (DateTime.Now - File.GetLastWriteTime(JetonDosyasi)).TotalSeconds < 90;
+                bool esit = File.ReadAllText(JetonDosyasi).Trim() == jeton;
+                File.Delete(JetonDosyasi); // tek kullanımlık
+                return taze && esit;
+            }
+            catch { return false; }
+        }
+
+        DateTime? yenidenBaslat;
+
+        /// <summary>Yeni sürüme geçer: kendini yeni Sem.exe ile yeniden açar; pencere açıksa ve oturum açıksa şifre sorulmadan geri gelir.</summary>
+        void YeniSurumeGec(bool pencereAcik)
+        {
+            var arg = "/yonetim /tepsi /yeniden";
+            if (pencereAcik && oturumAcik)
+            {
+                var jeton = Guid.NewGuid().ToString("N");
+                try { File.WriteAllText(JetonDosyasi, jeton); arg += " /ac:" + jeton; } catch { }
+            }
+            else if (pencereAcik) arg = "/yonetim /yeniden";
+            Process.Start(new ProcessStartInfo(AjanAyar.KurulumExe, arg) { UseShellExecute = false });
+            Cik();
         }
 
         void Basla()
@@ -313,12 +349,17 @@ namespace Sem.Yonetici
                 if (!File.Exists(AjanAyar.KurulumExe)) return;
                 var v = FileVersionInfo.GetVersionInfo(AjanAyar.KurulumExe);
                 if (v.ProductName != "Sem Ajan" || new Version(v.FileMajorPart, v.FileMinorPart, v.FileBuildPart) <= Version.Parse(Sabitler.Surum)) return;
-                if (!Visible)
+                if (!Visible) { YeniSurumeGec(false); return; }
+                // Pencere açık: başka bir pencere (duyuru yazma, ayarlar vb.) açık değilse birkaç saniye sonra yeni sürümle yeniden açılır.
+                bool mesgul = Application.OpenForms.Cast<Form>().Any(f => f != this && f.Visible && !(f is TepsiPanel));
+                if (mesgul) return; // bir dakika sonra tekrar bakılır
+                if (yenidenBaslat == null)
                 {
-                    Process.Start(new ProcessStartInfo(AjanAyar.KurulumExe, "/yonetim /tepsi /yeniden") { UseShellExecute = false });
-                    Cik();
+                    yenidenBaslat = DateTime.Now.AddSeconds(5);
+                    sonSurumDenetimi = DateTime.MinValue; // 10 sn sonraki turda uygula
+                    Tost("Sem Ajan " + v.FileMajorPart + "." + v.FileMinorPart + "." + v.FileBuildPart + " sürümüne geçiliyor, pencere birkaç saniye içinde yeniden açılacak.");
                 }
-                else if (!surumUyarildi) { surumUyarildi = true; Tost("Sem Ajan " + v.FileMajorPart + "." + v.FileMinorPart + "." + v.FileBuildPart + " kuruldu. Pencereyi kapatıp yeniden açınca yeni sürüm gelir."); }
+                else if (DateTime.Now >= yenidenBaslat) YeniSurumeGec(true);
             }
             catch { }
         }
@@ -449,7 +490,7 @@ namespace Sem.Yonetici
              .Ekle("Kapanma saatleri", Ik.Takvim, () => Guvenli(KapanmaSaatleri));
             if (ayarlar.Duvar) m.Ekle("Duvar kâğıdı", Ik.Resim, () => Guvenli(DuvarKagidi));
             m.Ekle("Uyandır (aç)", Ik.Gunes, () => Guvenli(Uyandir)).Ayrac();
-            if (ayarlar.Yazici) m.Ekle("Yazıcı kur", Ik.Yazici, () => Guvenli(YaziciKur)).Ekle("Yazıcıyı onar", Ik.Anahtar_, () => Guvenli(YaziciOnar));
+            if (ayarlar.Yazici) m.Ekle("Yazıcı kur", Ik.Yazici, () => Guvenli(YaziciKur)).Ekle("Yazıcıyı onar", Ik.Anahtar_, () => Guvenli(YaziciOnar)).Ekle("Yazıcıyı sabitle", Ik.Kalkan, () => Guvenli(YaziciSabitle));
             if (ayarlar.Program) m.Ekle("Program kur", Ik.ProgramEkle, () => Guvenli(ProgramKur));
             m.Ekle("Dosyadan güncelle", Ik.Esitle, () => Guvenli(SemGuncelle)).Ayrac()
              .Ekle("Bekleyen kapatmayı iptal et", Ik.KapatDaire, () => Guvenli(KapatmayiIptal))
@@ -957,6 +998,21 @@ namespace Sem.Yonetici
                 h.Count + " bilgisayara bu bilgisayardaki sürücünün aynısı kurulacak.", "Kur") != true) return;
             var veri = paket.Veri;
             Uygula("Yazıcı kur", h, p => { var m = new Mesaj("YAZICI_KUR") { Veri = veri }; m["ip"] = ip; m["ad"] = ad; m["surucu"] = surucu; return m; }, 180000);
+        }
+
+        void YaziciSabitle()
+        {
+            var h = Hedefler(); if (h == null) return;
+            int acik = h.Count(p => p.SonDurum?["yazici_kilit"] == "1");
+            int s = MK.Secim(this, "Yazıcıyı sabitle",
+                h.Count + " bilgisayar" + (acik > 0 ? " (" + acik + " tanesinde şu an açık)" : "") + ".\n\n" +
+                "Açıkken yalnız Canon (" + YaziciForm.VarsayilanIp + ") ve Microsoft Print to PDF kalır; yönetici bilgisayarında USB yazıcılar (Brother) da kalır. " +
+                "Eklenen diğer yazıcılar ve Canon kopyaları birkaç dakika içinde silinir, \"Yazıcı ekle\" kapanır, Canon sabit IP portuna alınır.",
+                ("Sabitle", "Yalnız Canon ve PDF kalsın", Ik.Kalkan),
+                ("Serbest bırak", "Yazıcı eklemeye yeniden izin ver", Ik.Kilit));
+            if (s < 0) return;
+            bool ac = s == 0;
+            Uygula(ac ? "Yazıcıyı sabitle" : "Yazıcı serbest", h, p => { var m = new Mesaj("AYAR"); m["yazici_kilit"] = ac ? "1" : "0"; m["yazici_ip"] = YaziciForm.VarsayilanIp; return m; });
         }
 
         void YaziciKurElle(List<Pc> h)

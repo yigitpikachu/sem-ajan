@@ -103,6 +103,8 @@ namespace Sem.Ajan
             try { EkranBekci(); } catch (Exception e) { Gunluk.Yaz("Ekran: " + e.Message); }
             try { GuncellemeKontrol(); } catch (Exception e) { Gunluk.Yaz("Güncelleme: " + e.Message); }
             try { SabahKontrol(); } catch (Exception e) { Gunluk.Yaz("Sabah: " + e.Message); }
+            if (!wolDenendi && ayar.SabahSaat != "" && !ayar.WolHazir) { wolDenendi = true; WolHazirla(); } // güncellemeden sonra bir kez
+            try { YaziciKilitKontrol(); } catch (Exception e) { Gunluk.Yaz("Yazıcı kilidi: " + e.Message); }
             try { paylasim?.OrtakKontrol(); } catch (Exception e) { Gunluk.Yaz("Ortak: " + e.Message); }
             try { KilitTasarimi(); } catch { }
             lock (kilit) if (uzakSon != DateTime.MinValue && (DateTime.Now - uzakSon).TotalSeconds > 8) { uzakSon = DateTime.MinValue; EkranaGonder("UZAK", "0"); }
@@ -134,6 +136,8 @@ namespace Sem.Ajan
         }
 
         /// <summary>Ağ kartının "sihirli paketle uyanma" ayarını açar ve hızlı başlatmayı kapatır (Wake-on-LAN için).</summary>
+        bool wolDenendi;
+
         void WolHazirla()
         {
             Arkaplan("Ağdan açılma hazırlığı", () =>
@@ -142,6 +146,10 @@ namespace Sem.Ajan
                          "Get-NetAdapter -Physical | ForEach-Object {\r\n" +
                          "  Set-NetAdapterPowerManagement -Name $_.Name -WakeOnMagicPacket Enabled -NoRestart\r\n" +
                          "  foreach ($k in '*WakeOnMagicPacket','EnablePME','S5WakeOnLan','WakeOnLink') { Set-NetAdapterAdvancedProperty -Name $_.Name -RegistryKeyword $k -RegistryValue 1 -NoRestart }\r\n" +
+                         // Aygıt Yöneticisi > Güç Yönetimi: "kapatabilsin" ve "bilgisayarı uyandırabilsin" kutuları
+                         "  $id = $_.PnPDeviceID\r\n" +
+                         "  foreach ($sinif in 'MSPower_DeviceEnable','MSPower_DeviceWakeEnable') { Get-CimInstance -Namespace root/wmi -ClassName $sinif | Where-Object { $_.InstanceName -like ($id + '*') } | Set-CimInstance -Property @{Enable=$true} }\r\n" +
+                         "  powercfg /deviceenablewake \"$($_.InterfaceDescription)\"\r\n" +
                          "}\r\n" +
                          "Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power' -Name HiberbootEnabled -Value 0\r\n";
                 var klasor = Path.Combine(AjanAyar.Klasor, "wol");
@@ -525,6 +533,8 @@ namespace Sem.Ajan
                         if (m.Alan.ContainsKey("paylasim")) ayar.Paylasim = m["paylasim"] == "1";
                         if (m.Alan.ContainsKey("telefon")) ayar.Telefon = m["telefon"] == "1";
                         if (m.Alan.ContainsKey("ekran_izni")) ayar.EkranIzni = m["ekran_izni"] == "1";
+                        if (m.Alan.ContainsKey("yazici_kilit")) { ayar.YaziciKilit = m["yazici_kilit"] == "1"; sonYaziciKontrol = DateTime.MinValue; }
+                        if (m["yazici_ip"] != "" && IPAddress.TryParse(m["yazici_ip"], out _)) ayar.YaziciIp = m["yazici_ip"];
                         ayar.Yaz(); uyariGosterildi = false;
                     }
                     EkranaGonder("UYARI_KAPAT");
@@ -663,6 +673,7 @@ namespace Sem.Ajan
             r["gorunen"] = ayar.GorunenAd; r["grup"] = ayar.Grup; r["grup_ad"] = ayar.GrupAd; r["simge"] = ayar.Simge;
             r["duvar_kip"] = ayar.DuvarKip;
             r["ekran_izni"] = ayar.EkranIzni ? "1" : "0";
+            r["yazici_kilit"] = ayar.YaziciKilit ? "1" : "0";
             r["saglik"] = Saglik.Ozet();
             r["paylasim"] = ayar.Paylasim ? "1" : "0"; r["telefon"] = ayar.Telefon ? "1" : "0"; r["yonetici"] = ayar.Yonetici ? "1" : "0";
             lock (okunan) r["okunan"] = string.Join(";", okunan.Skip(Math.Max(0, okunan.Count - 50)));
@@ -775,6 +786,112 @@ namespace Sem.Ajan
         }
 
         // ---------------------------------------------------------------- Yazıcı
+        DateTime sonYaziciKontrol = DateTime.MinValue;
+        int yaziciCalisiyor;
+
+        /// <summary>Yazıcıyı sabitle: 5 dakikada bir Canon dışındaki yazıcıları siler, Canon'u sabit IP portuna alır, yazıcı eklemeyi kapatır.</summary>
+        void YaziciKilitKontrol()
+        {
+            bool kilitli, ilke, yonetici; string ip;
+            lock (kilit) { kilitli = ayar.YaziciKilit; ilke = ayar.YaziciIlke; ip = ayar.YaziciIp; yonetici = ayar.Yonetici; }
+            if (!kilitli)
+            {
+                if (ilke) { YaziciIlkeleri(false); lock (kilit) { ayar.YaziciIlke = false; ayar.Yaz(); } Gunluk.Yaz("Yazıcı sabitleme kapatıldı"); }
+                return;
+            }
+            if ((DateTime.Now - sonYaziciKontrol).TotalMinutes < 5) return;
+            if (Interlocked.Exchange(ref yaziciCalisiyor, 1) == 1) return;
+            sonYaziciKontrol = DateTime.Now;
+            new Thread(() =>
+            {
+                try
+                {
+                    YaziciIlkeleri(true); // yeni oturum açan kullanıcıya da uygulansın diye her seferinde
+                    if (!ilke) lock (kilit) { ayar.YaziciIlke = true; ayar.Yaz(); }
+                    string canon;
+                    var sonuc = YaziciTemizle(ip, yonetici, out canon);
+                    if (canon != "" && !yonetici) EkranaGonder("VARSAYILAN_YAZICI", canon);
+                    if (sonuc != "") { sonIslem = DateTime.Now.ToString("HH:mm") + " Yazıcıyı sabitle: " + sonuc; Gunluk.Yaz(sonIslem); }
+                }
+                catch (Exception e) { Gunluk.Yaz("Yazıcı kilidi: " + e.Message); }
+                finally { Interlocked.Exchange(ref yaziciCalisiyor, 0); }
+            }) { IsBackground = true }.Start();
+        }
+
+        /// <summary>Windows'un ağdaki yazıcıları kendiliğinden eklemesini ve "Yazıcı ekle"yi kapatır (ac=false: geri alır).</summary>
+        static void YaziciIlkeleri(bool ac)
+        {
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\NcdAutoSetup\Private"))
+                    if (ac) k.SetValue("AutoSetup", 0, Microsoft.Win32.RegistryValueKind.DWord); else k.DeleteValue("AutoSetup", false);
+            }
+            catch { }
+            // Kullanıcı ilkesi: açık olan her kullanıcı hesabına (ortak hesap yönetici olsa da ilke geçerli)
+            try
+            {
+                foreach (var sid in Microsoft.Win32.Registry.Users.GetSubKeyNames().Where(x => x.StartsWith("S-1-5-21-") && !x.EndsWith("_Classes")))
+                    try
+                    {
+                        using (var k = Microsoft.Win32.Registry.Users.CreateSubKey(sid + @"\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"))
+                            if (ac) k.SetValue("NoAddPrinter", 1, Microsoft.Win32.RegistryValueKind.DWord); else k.DeleteValue("NoAddPrinter", false);
+                        // Windows varsayılan yazıcıyı kendisi değiştirmesin
+                        if (ac) using (var k = Microsoft.Win32.Registry.Users.CreateSubKey(sid + @"\Software\Microsoft\Windows NT\CurrentVersion\Windows"))
+                            k.SetValue("LegacyDefaultPrinterMode", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    }
+                    catch { }
+            }
+            catch { }
+        }
+
+        /// <summary>Canon'un tek bir kaydını tutar (kopyaları siler), sabit IP portuna alır; PDF ve yönetici bilgisayarında USB yazıcılar dışındaki her yazıcıyı siler.</summary>
+        static string YaziciTemizle(string ip, bool yonetici, out string canon)
+        {
+            canon = "";
+            Func<string, string> t = x => x.Replace("'", "''");
+            var klasor = Path.Combine(AjanAyar.Klasor, "yazici_kilit");
+            Directory.CreateDirectory(klasor);
+            var dosya = Path.Combine(klasor, "temizle.ps1");
+            var cikis = Path.Combine(klasor, "sonuc.txt");
+            try { File.Delete(cikis); } catch { }
+            // Türkçe yazıcı adları bozulmasın diye sonuç UTF-8 dosyaya yazılır
+            var ps = "$ErrorActionPreference='SilentlyContinue'\r\n" +
+                     $"$ip='{t(ip)}'; $port='IP_' + $ip; $yonetici=${(yonetici ? "true" : "false")}\r\n" +
+                     "& {\r\n" +
+                     "if ((Get-Service Spooler).Status -ne 'Running') { exit }\r\n" +
+                     "$hepsi = @(Get-Printer)\r\n" +
+                     // Tutulacak Canon: önce adında 1643 geçen, kopya olmayan, zaten sabit portta olan
+                     "$tut = $hepsi | Where-Object { $_.DriverName -like 'Canon*' } | Sort-Object " +
+                     "@{e={ if ($_.Name -like '*1643*' -or $_.DriverName -like '*1643*') {0} else {1} }}, " +
+                     "@{e={ if ($_.Name -match 'Kopya|Copy|\\(\\d+\\)') {1} else {0} }}, " +
+                     "@{e={ if ($_.PortName -eq $port) {0} else {1} }}, Name | Select-Object -First 1\r\n" +
+                     "if ($tut) {\r\n" +
+                     "  if (-not (Get-PrinterPort -Name $port)) { Add-PrinterPort -Name $port -PrinterHostAddress $ip }\r\n" +
+                     "  if ($tut.PortName -ne $port) { Set-Printer -Name $tut.Name -PortName $port; if ($?) { 'PORT' } }\r\n" +
+                     "  'CANON=' + $tut.Name\r\n" +
+                     "} else { 'CANON_YOK' }\r\n" +
+                     "foreach ($p in $hepsi) {\r\n" +
+                     "  if ($tut -and $p.Name -eq $tut.Name) { continue }\r\n" +
+                     "  if ($p.Name -eq 'Microsoft Print to PDF' -or $p.DriverName -eq 'Microsoft Print To PDF') { continue }\r\n" +
+                     "  if ($yonetici -and $p.PortName -like 'USB*') { continue }\r\n" +
+                     "  Get-PrintJob -PrinterName $p.Name | Remove-PrintJob\r\n" +
+                     "  Remove-Printer -Name $p.Name\r\n" +
+                     "  if ($?) { 'SIL=' + $p.Name }\r\n" +
+                     "}\r\n" +
+                     $"}} | Set-Content -Path '{t(cikis)}' -Encoding UTF8\r\n";
+            File.WriteAllText(dosya, ps, new UTF8Encoding(true));
+            Calistir("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"" + dosya + "\"", true);
+            var satirlar = File.Exists(cikis) ? File.ReadAllLines(cikis, Encoding.UTF8).Select(x => x.Trim()).Where(x => x != "").ToList() : new List<string>();
+            var c = satirlar.FirstOrDefault(x => x.StartsWith("CANON="));
+            if (c != null) canon = c.Substring(6);
+            // Yalnızca bir şey değiştiyse Etkinlik'e yazılır
+            var degisen = satirlar.Where(x => x.StartsWith("SIL=")).Select(x => x.Substring(4) + " silindi").ToList();
+            if (satirlar.Contains("PORT")) degisen.Insert(0, "Canon sabit IP portuna alındı");
+            if (degisen.Count == 0 && satirlar.Contains("CANON_YOK")) return sonYaziciUyarisi++ == 0 ? "Canon bulunamadı, Yazıcı kur ile kurun" : "";
+            return string.Join(", ", degisen);
+        }
+        static int sonYaziciUyarisi;
+
         static string YaziciKur(string klasor, string ip, string ad, string surucu)
         {
             var inf = Directory.GetFiles(klasor, "*.inf", SearchOption.AllDirectories);

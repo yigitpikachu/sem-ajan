@@ -43,6 +43,8 @@ namespace Sem
             {
                 bool tepsi = args.Skip(1).Any(a => a.Equals("/tepsi", StringComparison.OrdinalIgnoreCase));
                 bool yeniden = args.Skip(1).Any(a => a.Equals("/yeniden", StringComparison.OrdinalIgnoreCase));
+                // Güncellemeden sonra açık pencereyle yeniden başlarken: /ac:<jeton> (şifre tekrar sorulmaz)
+                var jeton = args.Skip(1).Where(a => a.StartsWith("/ac:", StringComparison.OrdinalIgnoreCase)).Select(a => a.Substring(4)).FirstOrDefault() ?? "";
                 bool ilk;
                 using (var m = new Mutex(false, @"Local\SemYonetim"))
                 using (var goster = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\SemYonetimGoster"))
@@ -52,7 +54,7 @@ namespace Sem
                     catch (AbandonedMutexException) { ilk = true; }
                     // Zaten açıksa (ör. saatin yanında bekliyorsa) o pencereyi öne getir.
                     if (!ilk) { if (!tepsi) goster.Set(); return 0; }
-                    try { Application.Run(new Yonetici.AnaForm(tepsi, goster)); }
+                    try { Application.Run(new Yonetici.AnaForm(tepsi, goster, jeton)); }
                     finally { try { m.ReleaseMutex(); } catch { } }
                 }
                 return 0;

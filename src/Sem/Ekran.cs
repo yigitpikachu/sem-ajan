@@ -126,6 +126,10 @@ namespace Sem.Ajan
                 case "UYARI_KAPAT":
                     uyari?.Close();
                     break;
+                case "VARSAYILAN_YAZICI":
+                    // Yazıcıyı sabitle: Canon bu kullanıcının varsayılan yazıcısı olsun
+                    try { if (p.Length > 1 && p[1] != "" && VarsayilanYazici() != p[1]) SetDefaultPrinter(p[1]); } catch { }
+                    break;
                 case "IPTAL_SONUC":
                     uyari?.IptalSonucu(p[1] == "1");
                     break;
@@ -186,6 +190,12 @@ namespace Sem.Ajan
 
         /// <summary>Ekranın küçültülmüş JPEG görüntüsünü hizmete gönderir (yönetim ekranındaki önizleme için).</summary>
         readonly FarkKodlayici fark = new FarkKodlayici();
+
+        [System.Runtime.InteropServices.DllImport("winspool.drv", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        static extern bool SetDefaultPrinter(string ad);
+        [System.Runtime.InteropServices.DllImport("winspool.drv", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        static extern bool GetDefaultPrinter(StringBuilder ad, ref int boyut);
+        static string VarsayilanYazici() { int n = 512; var sb = new StringBuilder(n); return GetDefaultPrinter(sb, ref n) ? sb.ToString() : ""; }
 
         void ResimGonder(string[] p)
         {

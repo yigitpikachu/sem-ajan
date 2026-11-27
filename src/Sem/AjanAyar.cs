@@ -47,6 +47,11 @@ namespace Sem.Ajan
         public string Parmakizi = "";       // LocalSend cihaz kimliği
         public string YaziciIzinli = "";    // "her zaman izin ver" denen telefonlar (parmak izi;...)
         public bool LocalSendKaldirildi;
+
+        // Yazıcıyı sabitle (1.5.3)
+        public bool YaziciKilit;            // yalnız Canon (+ PDF; yöneticide USB yazıcılar da) kalsın
+        public string YaziciIp = "192.168.1.50";
+        public bool YaziciIlke;             // yazıcı ekleme engelleri uygulandı mı (kaldırırken geri almak için)
         public string Isim => GorunenAd != "" ? GorunenAd : Environment.MachineName;
 
         public static AjanAyar Oku()
@@ -75,7 +80,7 @@ namespace Sem.Ajan
             if (d.TryGetValue("sabah_saat", out v)) a.SabahSaat = v;
             if (d.TryGetValue("sabah_gunler", out v)) a.SabahGunler = v;
             if (d.TryGetValue("sabah_macler", out v)) a.SabahMacler = v;
-            if (d.TryGetValue("wol_hazir", out v)) a.WolHazir = v == "1";
+            if (d.TryGetValue("wol_hazir2", out v)) a.WolHazir = v == "1"; // 1.5.3: uyandırma izni de eklendi, eskiler bir kez yeniden hazırlanır
             if (d.TryGetValue("yonetici", out v)) a.Yonetici = v == "1"; else a.Yonetici = !a.OtomatikKapanma;
             if (d.TryGetValue("gorunen_ad", out v)) a.GorunenAd = v;
             if (d.TryGetValue("grup", out v)) a.Grup = v;
@@ -87,6 +92,9 @@ namespace Sem.Ajan
             if (d.TryGetValue("parmakizi", out v)) a.Parmakizi = v;
             if (d.TryGetValue("yazici_izinli", out v)) a.YaziciIzinli = v;
             if (d.TryGetValue("localsend_kaldirildi", out v)) a.LocalSendKaldirildi = v == "1";
+            if (d.TryGetValue("yazici_kilit", out v)) a.YaziciKilit = v == "1";
+            if (d.TryGetValue("yazici_ip", out v) && v != "") a.YaziciIp = v;
+            if (d.TryGetValue("yazici_ilke", out v)) a.YaziciIlke = v == "1";
             return a;
         }
 
@@ -109,7 +117,7 @@ namespace Sem.Ajan
             sb.AppendLine("sabah_saat=" + SabahSaat);
             sb.AppendLine("sabah_gunler=" + SabahGunler);
             sb.AppendLine("sabah_macler=" + SabahMacler);
-            sb.AppendLine("wol_hazir=" + (WolHazir ? "1" : "0"));
+            sb.AppendLine("wol_hazir2=" + (WolHazir ? "1" : "0"));
             sb.AppendLine("yonetici=" + (Yonetici ? "1" : "0"));
             sb.AppendLine("gorunen_ad=" + Tek(GorunenAd));
             sb.AppendLine("grup=" + Tek(Grup));
@@ -118,6 +126,9 @@ namespace Sem.Ajan
             sb.AppendLine("paylasim=" + (Paylasim ? "1" : "0"));
             sb.AppendLine("telefon=" + (Telefon ? "1" : "0"));
             sb.AppendLine("ekran_izni=" + (EkranIzni ? "1" : "0"));
+            sb.AppendLine("yazici_kilit=" + (YaziciKilit ? "1" : "0"));
+            sb.AppendLine("yazici_ip=" + Tek(YaziciIp));
+            sb.AppendLine("yazici_ilke=" + (YaziciIlke ? "1" : "0"));
             sb.AppendLine("parmakizi=" + Parmakizi);
             sb.AppendLine("yazici_izinli=" + YaziciIzinli);
             sb.AppendLine("localsend_kaldirildi=" + (LocalSendKaldirildi ? "1" : "0"));
