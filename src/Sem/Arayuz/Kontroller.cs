@@ -295,6 +295,9 @@ namespace Sem.Arayuz
         public Color Dolgu = Renk.Yuzey;
         public bool Golge = true;
         public bool Cizgisiz;
+        /// <summary>Başka kontrollerin üstünde yüzen panellerde köşeler dışarıda kalan alan kesilir (gri kare köşe görünmesin).</summary>
+        public bool Kirp { get => kirp; set { kirp = value; BolgeAyarla(); } }
+        bool kirp;
 
         public KartPanel()
         {
@@ -307,6 +310,19 @@ namespace Sem.Arayuz
             Tema.Kaliteli(e.Graphics);
             if (Cizgisiz) Tema.YuzenKart(e.Graphics, new RectangleF(Tema.S(3), Tema.S(1), Width - Tema.S(6), Height - Tema.S(8)), Tema.S(Yaricap), Dolgu, 0);
             else Tema.Kart(e.Graphics, new Rectangle(0, 0, Width - 1, Height - Tema.S(Golge ? 4 : 1)), Tema.S(Yaricap), Dolgu, Renk.Cizgi, Golge);
+        }
+
+        protected override void OnSizeChanged(EventArgs e) { base.OnSizeChanged(e); BolgeAyarla(); }
+
+        void BolgeAyarla()
+        {
+            if (!kirp || Width <= 0 || Height <= 0) return;
+            var r = Cizgisiz ? new RectangleF(Tema.S(3), Tema.S(1), Width - Tema.S(6), Height - Tema.S(8)) : new RectangleF(0, 0, Width, Height - Tema.S(Golge ? 3 : 0));
+            if (Cizgisiz) r = new RectangleF(r.X - 1, r.Y, r.Width + 2, r.Height + Tema.S(2)); // gölgenin ilk birkaç pikseli kalsın
+            using (var yol = Tema.Yuvarlak(r, Tema.S(Yaricap) + 1))
+            {
+                var eski = Region; Region = new Region(yol); eski?.Dispose();
+            }
         }
     }
 

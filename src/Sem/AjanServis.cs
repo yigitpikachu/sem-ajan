@@ -557,7 +557,7 @@ namespace Sem.Ajan
                     AyarDegistir(a => { a.DuvarKip = m["kip"]; a.DuvarOda = m["oda"] == "1"; if (m.Alan.ContainsKey("ton")) a.DuvarTon = m["ton"]; a.DuvarKilit = m["kilit"] != "0"; a.DuvarKoru = m["koru"] != "0"; });
                     DuvarGonder();
                     kilitGunu = DateTime.MinValue; KilitTasarimi();
-                    return Mesaj.Basari(ayar.DuvarKip == "otomatik" ? "Duvar kâğıdı: mevsime ve özel günlere göre" : "Duvar kâğıdı: kurumsal");
+                    return Mesaj.Basari(ayar.DuvarKip == "otomatik" ? "Duvar kâğıdı: mevsime ve özel günlere göre" : ayar.DuvarKip == "gece" ? "Duvar kâğıdı: gece" : "Duvar kâğıdı: kurumsal");
 
                 case "DOSYA_GONDER":
                 {

@@ -55,11 +55,35 @@ namespace Sem.Yonetici
         {
             bool o = OnizlemeVar && onizlemeAlan.Contains(e.Location) && !secimAlan.Contains(e.Location);
             if (o != onizlemeUzerinde) { onizlemeUzerinde = o; Invalidate(); }
+            SurukleDenetle(e);
             base.OnMouseMove(e);
+        }
+
+        // Sürükleyip başka bir grubun üstüne bırakınca grubu değişir.
+        Point basNokta; bool basili, surukledi;
+        public bool Suruklenen;
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left) { basNokta = e.Location; basili = true; surukledi = false; }
+            base.OnMouseDown(e);
+        }
+
+        void SurukleDenetle(MouseEventArgs e)
+        {
+            if (!basili || surukledi || (e.Button & MouseButtons.Left) == 0) return;
+            var d = SystemInformation.DragSize;
+            if (Math.Abs(e.X - basNokta.X) <= d.Width * 2 && Math.Abs(e.Y - basNokta.Y) <= d.Height * 2) return;
+            surukledi = true; basili = false;
+            Suruklenen = true; Invalidate();
+            try { DoDragDrop(new DataObject(typeof(PcKart).FullName, this), DragDropEffects.Move); }
+            finally { Suruklenen = false; if (!IsDisposed) Invalidate(); }
         }
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
+            basili = false;
+            if (surukledi) { surukledi = false; base.OnMouseUp(e); return; }
             if (e.Button == MouseButtons.Left)
             {
                 if (onizlemeUzerinde) BuyutIstendi?.Invoke(this, EventArgs.Empty);
@@ -104,6 +128,7 @@ namespace Sem.Yonetici
         {
             var g = e.Graphics; Tema.Kaliteli(g);
             if (liste) SatirCiz(g); else KartCiz(g);
+            if (Suruklenen) using (var b = new SolidBrush(Color.FromArgb(150, Renk.Zemin))) g.FillRectangle(b, ClientRectangle);
         }
 
         void SecimDairesi(Graphics g, RectangleF sd, bool zeminli)
@@ -241,15 +266,21 @@ namespace Sem.Yonetici
         }
     }
 
-    /// <summary>Izgarada grup başlığı: renkli nokta, grup adı, sayı ve "Seç" bağlantısı.</summary>
+    /// <summary>Izgarada grup başlığı: renkli nokta, grup adı (tıklayınca yerinde düzenlenir), sayı ve "Seç" bağlantısı.
+    /// Bilgisayar sürüklenirken hedef grup vurgulanır.</summary>
     class GrupBaslik : Control
     {
         public readonly string Kod;
         public string Bilgi = "";
         public bool TumuSecili;
-        bool linkUzerinde;
-        RectangleF link;
+        bool hedef;
+        bool linkUzerinde, adUzerinde;
+        RectangleF link, adAlan;
+        TextBox kutu;
         public event EventHandler SecTiklandi;
+        public event Action<GrupBaslik, string> AdDegisti;
+
+        public bool Hedef { get => hedef; set { if (hedef != value) { hedef = value; Invalidate(); } } }
 
         public GrupBaslik(string kod)
         {
@@ -260,25 +291,74 @@ namespace Sem.Yonetici
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
-            bool l = link.Contains(e.Location);
-            if (l != linkUzerinde) { linkUzerinde = l; Cursor = l ? Cursors.Hand : Cursors.Default; Invalidate(); }
+            bool l = link.Contains(e.Location), a = kutu == null && adAlan.Contains(e.Location);
+            if (l != linkUzerinde || a != adUzerinde) { linkUzerinde = l; adUzerinde = a; Cursor = l || a ? Cursors.Hand : Cursors.Default; Invalidate(); }
         }
-        protected override void OnMouseLeave(EventArgs e) { linkUzerinde = false; Invalidate(); }
-        protected override void OnMouseUp(MouseEventArgs e) { if (e.Button == MouseButtons.Left && link.Contains(e.Location)) SecTiklandi?.Invoke(this, EventArgs.Empty); }
+        protected override void OnMouseLeave(EventArgs e) { linkUzerinde = adUzerinde = false; Invalidate(); }
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            if (link.Contains(e.Location)) SecTiklandi?.Invoke(this, EventArgs.Empty);
+            else if (adAlan.Contains(e.Location)) AdiDuzenle();
+        }
+
+        /// <summary>Grup adının yerinde küçük bir yazı kutusu açar. Enter veya başka yere tıklama kaydeder, Esc vazgeçer.</summary>
+        public void AdiDuzenle()
+        {
+            if (kutu != null) return;
+            var f = Tema.YaziKalin(11.5f);
+            kutu = new TextBox { BorderStyle = BorderStyle.None, Font = f, Text = Gruplar.Ad(Kod), BackColor = Renk.Yuzey, ForeColor = Renk.Yazi, MaxLength = 24 };
+            int h = kutu.PreferredHeight;
+            kutu.SetBounds(Tema.S(30), (Height - h) / 2 + Tema.S(2), Tema.S(220), h);
+            bool bitti = false;
+            Action bitir = null;
+            bitir = () =>
+            {
+                if (bitti) return; bitti = true;
+                var yeni = kutu.Text.Trim(); var k = kutu; kutu = null;
+                Controls.Remove(k); k.Dispose(); Invalidate();
+                if (yeni != "" && yeni != Gruplar.Ad(Kod)) AdDegisti?.Invoke(this, yeni);
+            };
+            kutu.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; bitir(); }
+                else if (e.KeyCode == Keys.Escape) { e.SuppressKeyPress = true; kutu.Text = Gruplar.Ad(Kod); bitir(); }
+            };
+            kutu.LostFocus += (s, e) => { if (!bitti) BeginInvoke(bitir); };
+            Controls.Add(kutu); Invalidate();
+            kutu.Focus(); kutu.SelectAll();
+        }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics; Tema.Kaliteli(g);
             var renk = Gruplar.Renk_(Kod);
             float ort = Height / 2f + Tema.S(2);
-            using (var b = new SolidBrush(renk)) g.FillEllipse(b, Tema.S(4), ort - Tema.S(5), Tema.S(10), Tema.S(10));
+            if (hedef)
+                using (var yol = Tema.Yuvarlak(new RectangleF(0, Tema.S(2), Width - 1, Height - Tema.S(3)), Tema.S(12)))
+                using (var b = new SolidBrush(Renk.Acik(renk, 38))) using (var pen = new Pen(renk, Tema.S(1.5f)))
+                { g.FillPath(b, yol); g.DrawPath(pen, yol); }
+            using (var b = new SolidBrush(renk)) g.FillEllipse(b, Tema.S(hedef ? 12 : 4), ort - Tema.S(5), Tema.S(10), Tema.S(10));
+            float x0 = Tema.S(hedef ? 30 : 22);
             using (var f = Tema.YaziKalin(11.5f))
             {
                 var ad = Gruplar.Ad(Kod);
                 float w = g.MeasureString(ad, f).Width;
-                Tema.YaziCiz(g, ad, f, Renk.Yazi, new RectangleF(Tema.S(22), 0, w + Tema.S(4), Height + Tema.S(4)));
-                Tema.YaziCiz(g, Bilgi, Tema.Yazi(9f), Renk.Yazi3, new RectangleF(Tema.S(26) + w, Tema.S(1), Width / 2f, Height + Tema.S(4)));
+                adAlan = new RectangleF(x0 - Tema.S(6), ort - Tema.S(14), w + Tema.S(12), Tema.S(28));
+                if (kutu != null)
+                {
+                    var r = new RectangleF(kutu.Left - Tema.S(8), kutu.Top - Tema.S(6), kutu.Width + Tema.S(16), kutu.Height + Tema.S(12));
+                    using (var yol = Tema.Yuvarlak(r, Tema.S(8))) using (var b = new SolidBrush(Renk.Yuzey)) using (var pen = new Pen(Renk.Mavi, Tema.S(1.5f)))
+                    { g.FillPath(b, yol); g.DrawPath(pen, yol); }
+                    return;
+                }
+                if (adUzerinde && !hedef) using (var yol = Tema.Yuvarlak(adAlan, Tema.S(8))) using (var b = new SolidBrush(Renk.Hover)) g.FillPath(b, yol);
+                Tema.YaziCiz(g, ad, f, Renk.Yazi, new RectangleF(x0, 0, w + Tema.S(4), Height + Tema.S(4)));
+                if (adUzerinde && !hedef) Tema.IkonCiz(g, Ik.Duzenle, 9f, Renk.Yazi3, new RectangleF(x0 + w + Tema.S(4), ort - Tema.S(10), Tema.S(20), Tema.S(20)));
+                var bilgi = hedef ? "·  Buraya bırakın" : Bilgi;
+                Tema.YaziCiz(g, bilgi, Tema.Yazi(9f), hedef ? renk : Renk.Yazi3, new RectangleF(x0 + w + Tema.S(adUzerinde ? 26 : 4), Tema.S(1), Width / 2f, Height + Tema.S(4)));
             }
+            if (hedef) { link = RectangleF.Empty; return; }
             using (var f = Tema.YaziKalin(9f))
             {
                 var t = TumuSecili ? "Seçimi kaldır" : "Hepsini seç";

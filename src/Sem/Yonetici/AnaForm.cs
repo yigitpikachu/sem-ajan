@@ -107,22 +107,20 @@ namespace Sem.Yonetici
             ozet.Controls.AddRange(new Control[] { ozAcik, ozKapali, ozKapanma });
 
             izgara = new Izgara { Dock = DockStyle.Fill, Padding = Tema.Pd(0, 4, 0, 0) };
-            izgara.AllowDrop = true;
-            izgara.DragEnter += (s, e) => e.Effect = ayarlar.Dosya && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
-            izgara.DragDrop += (s, e) => Guvenli(() => DosyaGonder((string[])e.Data.GetData(DataFormats.FileDrop)));
+            BirakmaHedefi(izgara);
             izgara.Resize += (s, e) => GenislikleriAyarla();
             bosMesaj = Yazi.Etiket("Henüz bilgisayar bulunamadı.\nDiğer bilgisayarlarda Sem Ajan kurulu ve açık olmalı. Birkaç saniye içinde burada görünürler.", 11f, false, Renk.Yazi2, false);
             bosMesaj.TextAlign = ContentAlignment.MiddleCenter; bosMesaj.Size = Tema.S(620, 80); bosMesaj.Visible = false;
 
             // Alt işlem çubuğu (yüzen)
-            islemCubugu = new KartPanel { Height = Tema.S(88), Yaricap = 20, BackColor = Renk.Zemin, Cizgisiz = true };
+            islemCubugu = new KartPanel { Height = Tema.S(88), Yaricap = 20, BackColor = Renk.Zemin, Cizgisiz = true, Kirp = true };
             secimYazi = Yazi.Etiket("Bilgisayar seçin", 10.5f, true); secimYazi.BackColor = Renk.Yuzey;
             secimYazi.Location = new Point(Tema.S(22), Tema.S(20));
             secimAlt = Yazi.Etiket("Kartlara tıklayarak seçin", 9f, false, Renk.Yazi2); secimAlt.BackColor = Renk.Yuzey; secimAlt.Location = new Point(Tema.S(22), Tema.S(44));
             islemCubugu.Controls.Add(secimYazi); islemCubugu.Controls.Add(secimAlt);
 
             // Küçük bildirim (tost)
-            tost = new KartPanel { Size = Tema.S(380, 64), Yaricap = 14, Visible = false, BackColor = Renk.Zemin, Dolgu = Renk.Yazi, Cizgisiz = true };
+            tost = new KartPanel { Size = Tema.S(380, 64), Yaricap = 14, Visible = false, BackColor = Renk.Zemin, Dolgu = Renk.Yazi, Cizgisiz = true, Kirp = true };
             tostYazi = Yazi.Etiket("", 9.75f, false, Color.White, false); tostYazi.BackColor = Renk.Yazi; tostYazi.SetBounds(Tema.S(18), Tema.S(8), tost.Width - Tema.S(36), tost.Height - Tema.S(22));
             tostYazi.TextAlign = ContentAlignment.MiddleLeft;
             tost.Controls.Add(tostYazi);
@@ -337,31 +335,70 @@ namespace Sem.Yonetici
         }
 
         DateTime sonSurumDenetimi = DateTime.MinValue;
-        bool surumUyarildi;
+        DateTime? yeniSurumGoruldu;
+        string engelKaydi = "";
+        bool gecisHatasiKaydedildi;
+        KartPanel surumKarti;
 
-        /// <summary>Bilgisayar güncellenince (Program Files'taki Sem.exe yenilenince) saatin yanındaki panel kendini yeni sürümle açar.</summary>
+        /// <summary>Bilgisayar güncellenince (Program Files'taki Sem.exe yenilenince) panel kendini yeni sürümle açar.
+        /// Geçemezse "Yeni sürüm hazır" kartı çıkar, tek tıkla yeniden açılır.</summary>
         void SurumDenetle()
         {
-            if ((DateTime.Now - sonSurumDenetimi).TotalSeconds < 60) return;
+            if ((DateTime.Now - sonSurumDenetimi).TotalSeconds < 9) return;
             sonSurumDenetimi = DateTime.Now;
+            string yeni = "";
             try
             {
                 if (!File.Exists(AjanAyar.KurulumExe)) return;
                 var v = FileVersionInfo.GetVersionInfo(AjanAyar.KurulumExe);
                 if (v.ProductName != "Sem Ajan" || new Version(v.FileMajorPart, v.FileMinorPart, v.FileBuildPart) <= Version.Parse(Sabitler.Surum)) return;
+                yeni = v.FileMajorPart + "." + v.FileMinorPart + "." + v.FileBuildPart;
                 if (!Visible) { YeniSurumeGec(false); return; }
-                // Pencere açık: başka bir pencere (duyuru yazma, ayarlar vb.) açık değilse birkaç saniye sonra yeni sürümle yeniden açılır.
-                bool mesgul = Application.OpenForms.Cast<Form>().Any(f => f != this && f.Visible && !(f is TepsiPanel));
-                if (mesgul) return; // bir dakika sonra tekrar bakılır
-                if (yenidenBaslat == null)
+                if (yeniSurumGoruldu == null) { yeniSurumGoruldu = DateTime.Now; Kaydet("Yeni sürüm kuruldu: " + yeni + ". Panel yeni sürüme geçiyor."); }
+
+                // Yalnızca yarım kalabilecek işler beklenir: açık bir diyalog (duyuru yazma, ayarlar...) veya uzaktan kontrol.
+                var engel = Application.OpenForms.Cast<Form>()
+                    .Where(f => f != this && f.Visible && !f.IsDisposed && (f.Modal || f is UzakForm)).ToList();
+                if (engel.Count > 0)
+                {
+                    var adlar = string.Join(", ", engel.Select(f => string.IsNullOrWhiteSpace(f.Text) ? f.GetType().Name : f.Text));
+                    if (adlar != engelKaydi) { engelKaydi = adlar; Kaydet("Yeni sürüme geçiş bekliyor, açık pencere: " + adlar); }
+                    yenidenBaslat = null;
+                }
+                else if (yenidenBaslat == null)
                 {
                     yenidenBaslat = DateTime.Now.AddSeconds(5);
-                    sonSurumDenetimi = DateTime.MinValue; // 10 sn sonraki turda uygula
-                    Tost("Sem Ajan " + v.FileMajorPart + "." + v.FileMinorPart + "." + v.FileBuildPart + " sürümüne geçiliyor, pencere birkaç saniye içinde yeniden açılacak.");
+                    Tost("Sem Ajan " + yeni + " sürümüne geçiliyor, pencere birkaç saniye içinde yeniden açılacak.");
                 }
-                else if (DateTime.Now >= yenidenBaslat) YeniSurumeGec(true);
+                else if (DateTime.Now >= yenidenBaslat) { YeniSurumeGec(true); return; }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                if (!gecisHatasiKaydedildi) { gecisHatasiKaydedildi = true; Kaydet("Yeni sürüme geçilemedi: " + ex.Message, 2); }
+            }
+            // 30 saniyede geçilemediyse elle yeniden açma kartı
+            if (yeniSurumGoruldu != null && Visible && (DateTime.Now - yeniSurumGoruldu.Value).TotalSeconds >= 30)
+                SurumKartiGoster(yeni);
+        }
+
+        void SurumKartiGoster(string yeni)
+        {
+            if (surumKarti != null) { surumKarti.Visible = true; surumKarti.BringToFront(); Yerlestir(); return; }
+            surumKarti = new KartPanel { Size = Tema.S(380, 112), Yaricap = 14, BackColor = Renk.Zemin, Dolgu = Renk.Yazi, Cizgisiz = true, Kirp = true };
+            var b1 = Yazi.Etiket("Yeni sürüm hazır" + (yeni != "" ? "  ·  " + yeni : ""), 10.5f, true, Color.White, false);
+            b1.BackColor = Renk.Yazi; b1.SetBounds(Tema.S(18), Tema.S(12), surumKarti.Width - Tema.S(36), Tema.S(24));
+            var b2 = Yazi.Etiket("Panel yeniden açılınca yeni sürüm kullanılır.", 9f, false, Color.FromArgb(200, 255, 255, 255), false);
+            b2.BackColor = Renk.Yazi; b2.SetBounds(Tema.S(18), Tema.S(36), surumKarti.Width - Tema.S(36), Tema.S(20));
+            var ac = new Buton("Yeniden aç", Ik.Yenile, ButonTuru.Birincil) { Height = Tema.S(36) };
+            ac.Location = new Point(Tema.S(18), Tema.S(62));
+            ac.Click += (s, e) =>
+            {
+                try { YeniSurumeGec(true); }
+                catch (Exception ex) { Kaydet("Yeniden açılamadı: " + ex.Message, 2); Tost("Yeniden açılamadı. Saatin yanındaki simgeden çıkıp Sem Ajan'ı yeniden açın."); }
+            };
+            surumKarti.Controls.AddRange(new Control[] { b1, b2, ac });
+            sayfaPc.Controls.Add(surumKarti); surumKarti.BringToFront();
+            Yerlestir();
         }
 
         // ------------------------------------------------------------------ Görünüm
@@ -445,7 +482,7 @@ namespace Sem.Yonetici
             kartGorunum.Location = new Point(listeGorunum.Left - kartGorunum.Width - Tema.S(2), Tema.S(22));
         }
 
-        int TostHedefY() => islemCubugu.Top - tost.Height - Tema.S(12);
+        int TostHedefY() => (surumKarti != null && surumKarti.Visible ? surumKarti.Top : islemCubugu.Top) - tost.Height - Tema.S(12);
 
         readonly ToolTip islemIpucu = new ToolTip();
 
@@ -488,6 +525,7 @@ namespace Sem.Yonetici
             IslemCubuguSigdir(gen);
             islemCubugu.Location = new Point(sol + Math.Max(0, (gen - islemCubugu.Width) / 2), sayfaPc.ClientSize.Height - islemCubugu.Height - Tema.S(20));
             tost.Left = sayfaPc.ClientSize.Width - tost.Width - Tema.S(28);
+            if (surumKarti != null) surumKarti.Location = new Point(sayfaPc.ClientSize.Width - surumKarti.Width - Tema.S(28), islemCubugu.Top - surumKarti.Height - Tema.S(12));
             if (!tostAnim.Enabled) tost.Top = TostHedefY();
             bosMesaj.Margin = new Padding(Math.Max(0, (izgara.ClientSize.Width - bosMesaj.Width) / 2), Tema.S(60), 0, 0);
             UstDugmeleriDiz();
@@ -689,6 +727,7 @@ namespace Sem.Yonetici
                     k.SecimDegisti += (s, e) => SecimGuncelle();
                     k.BuyutIstendi += (s, e) => Guvenli(() => EkranGoster(((PcKart)s).Pc));
                     k.DuzenleIstendi += (s, e) => Guvenli(() => Duzenle(((PcKart)s).Pc));
+                    BirakmaHedefi(k);
                     k.MouseUp += (s, e) => { if (e.Button == MouseButtons.Right) { var kk = (PcKart)s; if (!kk.Secili) kk.Secili = true; DigerMenu().ImlecteGoster(this); } };
                     kartlar[p.Ad] = k; izgara.Controls.Add(k);
                 }
@@ -710,6 +749,8 @@ namespace Sem.Yonetici
                     {
                         b = new GrupBaslik(grup.Key);
                         b.SecTiklandi += (s, e) => GrupSec(((GrupBaslik)s).Kod);
+                        b.AdDegisti += (bb, ad) => Guvenli(() => GrupAdiDegistir(bb.Kod, ad));
+                        BirakmaHedefi(b);
                         basliklar[grup.Key] = b; izgara.Controls.Add(b);
                     }
                     int acikSayi = uyeler.Count(p => p.Acik);
@@ -973,9 +1014,10 @@ namespace Sem.Yonetici
             int s = MK.Secim(this, "Duvar kâğıdı", "Seçili bilgisayarların duvar kâğıdı ve kilit ekranı. Biri değiştirirse program geri getirir.",
                 ("Otomatik", "Mevsime göre değişir, özel günlerde (23 Nisan, 2 Nisan, 24 Kasım…) o güne özel tasarım", Ik.Parilti),
                 ("Kurumsal", "Sade, logolu tasarım", Ik.Ev),
+                ("Gece", "Çok koyu, neredeyse siyah; yalnızca seçtiğiniz bilgisayarlara", Ik.Yildiz),
                 ("Bilgisayardan resim seç…", "JPG, PNG ya da BMP", Ik.Resim));
             if (s < 0) return;
-            if (s == 2)
+            if (s == 3)
             {
                 byte[] veri;
                 using (var o = new OpenFileDialog { Filter = "Resimler|*.jpg;*.jpeg;*.png;*.bmp", Title = "Duvar kâğıdı seçin" })
@@ -990,6 +1032,11 @@ namespace Sem.Yonetici
                 ("Adıyla birlikte", "Sorun bildirirken hangi bilgisayar olduğu karışmaz", Ik.Etiket),
                 ("Sadece tasarım", "Köşede ad yazmaz", Ik.Resim));
             if (o2 < 0) return;
+            if (s == 2)
+            {
+                Uygula("Duvar kâğıdı: gece", h, p => { var m = new Mesaj("DUVAR_TASARIM"); m["kip"] = "gece"; m["oda"] = o2 == 0 ? "1" : "0"; m["ton"] = "koyu"; m["kilit"] = "1"; m["koru"] = "1"; return m; }, 30000);
+                return;
+            }
             int o3 = MK.Secim(this, "Renk", "Duvar kâğıdı açık mı koyu mu olsun?",
                 ("Otomatik", "Bilgisayar Windows'ta koyu temadaysa koyu, değilse açık", Ik.Parilti),
                 ("Koyu", "Gece mavisi zemin, göz yormaz", Ik.Yildiz),
@@ -1246,6 +1293,73 @@ namespace Sem.Yonetici
             if (s < 0) return;
             lock (pcKilit) { foreach (var p in h) p.Grup = Gruplar.Liste[s].Kod; Depo.ListeYaz(pcler); }
             ListeyiCiz();
+        }
+
+        // ------------------------------------------------------------------ Sürükle-bırak: dosya gönderme ve grup değiştirme
+        static readonly string KartVerisi = typeof(PcKart).FullName;
+
+        void BirakmaHedefi(Control c)
+        {
+            c.AllowDrop = true;
+            c.DragEnter += (s, e) => SurukleUzerinde(e);
+            c.DragOver += (s, e) => SurukleUzerinde(e);
+            c.DragLeave += (s, e) => HedefGrupVurgula(null);
+            c.DragDrop += (s, e) => Guvenli(() => Birak(e));
+        }
+
+        void SurukleUzerinde(DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(KartVerisi))
+            {
+                var kod = HedefGrup(e.X, e.Y);
+                HedefGrupVurgula(kod);
+                e.Effect = kod != null ? DragDropEffects.Move : DragDropEffects.None;
+            }
+            else e.Effect = ayarlar.Dosya && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        }
+
+        /// <summary>İmlecin bulunduğu grup: üstündeki en yakın grup başlığı.</summary>
+        string HedefGrup(int ekranX, int ekranY)
+        {
+            var p = izgara.PointToClient(new Point(ekranX, ekranY));
+            var gorunen = basliklar.Values.Where(b => !b.IsDisposed && b.Parent == izgara).OrderBy(b => b.Top).ToList();
+            if (gorunen.Count == 0) return null;
+            var b0 = gorunen.LastOrDefault(b => b.Top <= p.Y) ?? gorunen[0];
+            return b0.Kod;
+        }
+
+        void HedefGrupVurgula(string kod)
+        {
+            foreach (var b in basliklar.Values) b.Hedef = b.Kod == kod;
+        }
+
+        void Birak(DragEventArgs e)
+        {
+            HedefGrupVurgula(null);
+            if (e.Data.GetDataPresent(KartVerisi))
+            {
+                var kart = e.Data.GetData(KartVerisi) as PcKart;
+                var kod = HedefGrup(e.X, e.Y);
+                if (kart == null || kod == null) return;
+                // Seçili bir kart sürüklendiyse seçili olanların hepsi taşınır.
+                var tasinan = kart.Secili ? kartlar.Values.Where(k => k.Secili).Select(k => k.Pc).ToList() : new List<Pc> { kart.Pc };
+                tasinan = tasinan.Where(p => p.Grup != kod).ToList();
+                if (tasinan.Count == 0) return;
+                lock (pcKilit) { foreach (var p in tasinan) p.Grup = kod; Depo.ListeYaz(pcler); }
+                ListeyiCiz();
+                Tost((tasinan.Count == 1 ? tasinan[0].Baslik : tasinan.Count + " bilgisayar") + " → " + Gruplar.Ad(kod));
+                return;
+            }
+            if (ayarlar.Dosya && e.Data.GetDataPresent(DataFormats.FileDrop)) DosyaGonder((string[])e.Data.GetData(DataFormats.FileDrop));
+        }
+
+        void GrupAdiDegistir(string kod, string ad)
+        {
+            if (Gruplar.Liste.Any(g => g.Kod != kod && g.Ad.Equals(ad, StringComparison.CurrentCultureIgnoreCase))) { Tost("Bu adda bir grup zaten var."); return; }
+            Gruplar.Kaydet(Gruplar.Liste.Select(g => (g.Kod, g.Kod == kod ? ad : g.Ad)).ToList());
+            ListeyiCiz();
+            foreach (var b in basliklar.Values) b.Invalidate();
+            Tost("Grup adı: " + ad);
         }
 
         void GruplariDuzenle()

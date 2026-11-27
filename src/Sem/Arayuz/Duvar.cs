@@ -21,6 +21,7 @@ namespace Sem.Arayuz
             public string Motif = ""; // kar, yaprak, cicek, gunes, yildiz, yapboz, kalp, bayrak
             public bool BuyukTarih;
             public string Tarih = "";
+            public float LogoOpak = 0; // 0: varsayılan
         }
 
         static readonly Color Mavi = Color.FromArgb(37, 170, 225), Yesil = Color.FromArgb(140, 198, 63), Turuncu = Color.FromArgb(251, 176, 64), Pembe = Color.FromArgb(236, 0, 140);
@@ -52,6 +53,7 @@ namespace Sem.Arayuz
         public static Tasarim Sec(string kip, DateTime t)
         {
             if (kip == "otomatik") return OzelGun(t) ?? Mevsim(t);
+            if (kip == "gece") return Gece();
             return Kurumsal();
         }
 
@@ -84,6 +86,16 @@ namespace Sem.Arayuz
             Func<double, int> s = v => (int)Math.Max(0, Math.Min(255, ort + (v - ort) * k));
             return Color.FromArgb(s(c.R), s(c.G), s(c.B));
         }
+
+        /// <summary>Çok koyu tasarım: neredeyse siyah zemin, ufukta çok hafif lacivert ışık, sönük yıldızlar ve kısık logo.
+        /// Yalnızca elle seçilen bilgisayarlara gider; otomatik kipte hiç çıkmaz.</summary>
+        public static Tasarim Gece() => new Tasarim
+        {
+            Kod = "gece", Ust = Kurum, Baslik = "Sevgi ve Emek\nile Mutluluk", Alt = "", Koyu = true, Motif = "gece",
+            Zemin = Color.FromArgb(7, 8, 11), Yazi = Color.FromArgb(196, 201, 210), Yazi2 = Color.FromArgb(86, 92, 104),
+            Vurgu = Color.FromArgb(70, 128, 168), LogoOpak = 0.5f,
+            Lekeler = new[] { Color.FromArgb(12, 28, 48), Color.FromArgb(10, 22, 34), Color.FromArgb(20, 16, 34), Color.FromArgb(9, 14, 22) },
+        };
 
         public static Tasarim Kurumsal() => new Tasarim
         {
@@ -214,7 +226,7 @@ namespace Sem.Arayuz
                 // Logo: kartsız, doğrudan zeminde. Koyu tasarımda tek renk (kırık beyaz), açıkta kendi renkleriyle.
                 float lk = 120 * s;
                 var lr = new RectangleF(sol - 6 * s, y, lk, lk);
-                if (logo != null) LogoCiz(g, logo, lr, t.Koyu && LogoTekRenk ? t.Yazi : (Color?)null, t.Koyu ? 0.92f : 1f);
+                if (logo != null) LogoCiz(g, logo, lr, t.Koyu && LogoTekRenk ? t.Yazi : (Color?)null, t.LogoOpak > 0 ? t.LogoOpak : t.Koyu ? 0.92f : 1f);
                 y += lk + 34 * s;
 
                 if (t.BuyukTarih && t.Tarih != "")
@@ -431,6 +443,14 @@ namespace Sem.Arayuz
                     using (var b = new SolidBrush(Color.FromArgb(a + 30, Turuncu))) g.FillEllipse(b, cx - 46 * s, cy - 46 * s, 92 * s, 92 * s);
                     break;
                 }
+                case "gece":
+                    // Sol yarıda seyrek, sönük yıldızlar; içerik ve saat tarafı temiz kalır.
+                    for (int i = 0; i < 70; i++)
+                    {
+                        float x = (float)(rnd.NextDouble() * w * 0.48), y = (float)(rnd.NextDouble() * h * 0.7), r = (float)(0.5 + rnd.NextDouble() * 1.3) * s;
+                        using (var b = new SolidBrush(Color.FromArgb(14 + rnd.Next(rnd.Next(10) == 0 ? 70 : 34), 210, 220, 240))) g.FillEllipse(b, x - r, y - r, r * 2, r * 2);
+                    }
+                    break;
                 case "yildiz":
                     for (int i = 0; i < 60; i++)
                     {
