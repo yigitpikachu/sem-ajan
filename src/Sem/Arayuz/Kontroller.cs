@@ -44,7 +44,7 @@ namespace Sem.Arayuz
             using (var g = CreateGraphics())
             {
                 var w = g.MeasureString(Text, Font).Width;
-                if (Dikey) { Width = Math.Max(Tema.S(72), (int)w + Tema.S(16)); Height = Tema.S(62); }
+                if (Dikey) { Width = Math.Max(Tema.S(60), (int)w + Tema.S(14)); Height = Tema.S(62); }
                 else Width = (int)w + Tema.S(Ikon != "" ? 52 : 32) - (Text == "" ? Tema.S(20) : 0);
             }
         }

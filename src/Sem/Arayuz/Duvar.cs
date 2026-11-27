@@ -31,6 +31,24 @@ namespace Sem.Arayuz
         static readonly string[] Aylar = { "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık" };
 
         /// <summary>Kip: "kurumsal" ya da "otomatik" (özel gün / mevsim).</summary>
+        /// <summary>ton: "" açık, "koyu", "otomatik" (koyuWindows: Windows koyu temada mı).</summary>
+        public static Tasarim Sec(string kip, DateTime t, string ton, bool koyuWindows)
+        {
+            var d = Sec(kip, t);
+            return ton == "koyu" || (ton == "otomatik" && koyuWindows) ? Koyulastir(d) : d;
+        }
+
+        /// <summary>Bu kullanıcının Windows'u koyu temada mı (görev çubuğu / sistem rengi).</summary>
+        public static bool WindowsKoyu()
+        {
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                    return k?.GetValue("SystemUsesLightTheme") is int v && v == 0;
+            }
+            catch { return false; }
+        }
+
         public static Tasarim Sec(string kip, DateTime t)
         {
             if (kip == "otomatik") return OzelGun(t) ?? Mevsim(t);

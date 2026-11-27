@@ -26,7 +26,7 @@ namespace Sem.Ajan
         readonly object yazKilit = new object();
         UyariForm uyari;
         string duvarYolu; bool duvarKoru;
-        string duvarKip = "", duvarOda = ""; DateTime duvarGunu;
+        string duvarKip = "", duvarOda = "", duvarTon = ""; DateTime duvarGunu; bool duvarKoyuCizildi;
         readonly System.Windows.Forms.Timer duvarBekci;
         NotifyIcon tepsi;
         string kokKlasor = "";
@@ -36,7 +36,7 @@ namespace Sem.Ajan
             gizli = new Form { ShowInTaskbar = false, WindowState = FormWindowState.Minimized, Opacity = 0 };
             var _ = gizli.Handle; // pencere kolu oluşsun ki başka iş parçacığından BeginInvoke yapılabilsin
             duvarBekci = new System.Windows.Forms.Timer { Interval = 60000 };
-            duvarBekci.Tick += (s, e) => { if (duvarKip != "" && duvarGunu != DateTime.Today) DuvarCiz(); DuvarKontrol(false); };
+            duvarBekci.Tick += (s, e) => { if (duvarKip != "" && (duvarGunu != DateTime.Today || (duvarTon == "otomatik" && Duvar.WindowsKoyu() != duvarKoyuCizildi))) DuvarCiz(); DuvarKontrol(false); };
             duvarBekci.Start();
             new Thread(Dongu) { IsBackground = true }.Start();
             try { GonderMenusu(); } catch { }
@@ -139,7 +139,7 @@ namespace Sem.Ajan
                     DuvarKontrol(true);
                     break;
                 case "DUVAR_CIZ":
-                    duvarKip = p[1]; duvarOda = p.Length > 2 ? p[2] : ""; duvarKoru = p.Length > 3 && p[3] == "1";
+                    duvarKip = p[1]; duvarOda = p.Length > 2 ? p[2] : ""; duvarKoru = p.Length > 3 && p[3] == "1"; duvarTon = p.Length > 4 ? p[4] : "";
                     DuvarCiz();
                     break;
                 case "DOSYA":
@@ -245,10 +245,13 @@ namespace Sem.Ajan
                 duvarGunu = DateTime.Today;
                 var k = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sem");
                 Directory.CreateDirectory(k);
-                var yol = Path.Combine(k, "duvar_" + duvarKip + "_" + DateTime.Now.ToString("yyyyMMdd") + ".png");
+                bool koyuWin = Duvar.WindowsKoyu();
+                var t = Duvar.Sec(duvarKip, DateTime.Now, duvarTon, koyuWin);
+                duvarKoyuCizildi = koyuWin;
+                var yol = Path.Combine(k, "duvar_" + duvarKip + (t.Koyu ? "_koyu_" : "_") + DateTime.Now.ToString("yyyyMMdd") + ".png");
                 var b = Screen.PrimaryScreen.Bounds;
                 using (var logo = Tema.Logo())
-                using (var bmp = Duvar.Ciz(Duvar.Sec(duvarKip, DateTime.Now), Math.Max(800, b.Width), Math.Max(600, b.Height), duvarOda, logo))
+                using (var bmp = Duvar.Ciz(t, Math.Max(800, b.Width), Math.Max(600, b.Height), duvarOda, logo))
                     bmp.Save(yol, ImageFormat.Png);
                 foreach (var f in Directory.GetFiles(k, "duvar_*.png")) if (!f.Equals(yol, StringComparison.OrdinalIgnoreCase)) try { File.Delete(f); } catch { }
                 duvarYolu = yol;

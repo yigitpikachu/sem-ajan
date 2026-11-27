@@ -385,7 +385,7 @@ namespace Sem.Yonetici
                 using (var p = Tema.Yuvarlak(new RectangleF(0, Tema.S(11), Tema.S(4), Height - Tema.S(22)), Tema.S(2)))
                 using (var b = new SolidBrush(Renk.Mavi)) g.FillPath(b, p);
             Tema.IkonCiz(g, ikon, 13f, aktif ? Renk.Mavi : Renk.Yazi2, new RectangleF(Tema.S(10), 0, Tema.S(30), Height));
-            Tema.YaziCiz(g, Text, aktif ? Tema.YaziKalin(10.5f) : Tema.Yazi(10.5f), Renk.Yazi, new RectangleF(Tema.S(46), 0, Width - Tema.S(90), Height));
+            Tema.YaziCiz(g, Text, aktif ? Tema.YaziKalin(10.5f) : Tema.Yazi(10.5f), Renk.Yazi, new RectangleF(Tema.S(46), 0, Width - Tema.S(Rozet != "" ? 84 : 50), Height));
             if (Rozet != "")
             {
                 using (var f = Tema.YaziKalin(8f))

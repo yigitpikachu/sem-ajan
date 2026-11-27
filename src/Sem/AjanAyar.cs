@@ -27,6 +27,7 @@ namespace Sem.Ajan
         public string BugunKapatmaTarihi = ""; // yyyy-MM-dd: o gün otomatik kapanma yapılmaz
         public bool DuvarKoru = true;
         public string DuvarKip = "";        // "" = gönderilen resim, "kurumsal", "otomatik" (mevsim + özel günler)
+        public string DuvarTon = "";       // "" açık, "koyu", "otomatik" (Windows temasına göre)
         public bool DuvarOda = true;        // tasarımda bilgisayarın adı görünsün
         public bool DuvarKilit = true;      // kilit ekranına da uygula
         public bool OtomatikKapanma = true; // yönetici bilgisayarında kapalı
@@ -74,6 +75,7 @@ namespace Sem.Ajan
             if (d.TryGetValue("duvar_koru", out v)) a.DuvarKoru = v != "0";
             if (d.TryGetValue("duvar_kip", out v)) a.DuvarKip = v;
             if (d.TryGetValue("duvar_oda", out v)) a.DuvarOda = v != "0";
+            if (d.TryGetValue("duvar_ton", out v)) a.DuvarTon = v;
             if (d.TryGetValue("duvar_kilit", out v)) a.DuvarKilit = v != "0";
             if (d.TryGetValue("otomatik_kapanma", out v)) a.OtomatikKapanma = v != "0";
             if (d.TryGetValue("oto_guncelle", out v)) a.OtoGuncelle = v != "0";
@@ -111,6 +113,7 @@ namespace Sem.Ajan
             sb.AppendLine("duvar_koru=" + (DuvarKoru ? "1" : "0"));
             sb.AppendLine("duvar_kip=" + DuvarKip);
             sb.AppendLine("duvar_oda=" + (DuvarOda ? "1" : "0"));
+            sb.AppendLine("duvar_ton=" + DuvarTon);
             sb.AppendLine("duvar_kilit=" + (DuvarKilit ? "1" : "0"));
             sb.AppendLine("otomatik_kapanma=" + (OtomatikKapanma ? "1" : "0"));
             sb.AppendLine("oto_guncelle=" + (OtoGuncelle ? "1" : "0"));

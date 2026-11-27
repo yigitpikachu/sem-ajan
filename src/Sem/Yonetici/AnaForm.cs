@@ -54,18 +54,18 @@ namespace Sem.Yonetici
             this.acJetonu = acJetonu ?? "";
             this.tepsiModu = tepsiModu; gorunurIzin = !tepsiModu;
             Text = "Sem Ajan";
-            StartPosition = FormStartPosition.CenterScreen; ClientSize = Tema.S(1240, 800); MinimumSize = Tema.S(980, 640);
+            StartPosition = FormStartPosition.CenterScreen; ClientSize = Tema.S(1240, 800); MinimumSize = Tema.S(860, 600);
             BackColor = Renk.Zemin; Font = Tema.Yazi(10f); DoubleBuffered = true;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             // ------------------------------------------------ Yan menü
-            yan = new Panel { Dock = DockStyle.Left, Width = Tema.S(236), BackColor = Renk.YanMenu };
-            var logo = new PictureBox { Image = Tema.Logo(), SizeMode = PictureBoxSizeMode.Zoom, Size = Tema.S(44, 44), Location = Tema.P(18, 22), BackColor = Renk.YanMenu };
-            var ad = Yazi.Etiket("Sem Ajan", 14f, true); ad.Location = Tema.P(70, 22); ad.BackColor = Renk.YanMenu;
-            var ad2 = Yazi.Etiket("Bilgisayar Yönetimi", 8.75f, false, Renk.Yazi2); ad2.Location = Tema.P(71, 46); ad2.BackColor = Renk.YanMenu;
+            yan = new Panel { Dock = DockStyle.Left, Width = Tema.S(200), BackColor = Renk.YanMenu };
+            var logo = new PictureBox { Image = Tema.Logo(), SizeMode = PictureBoxSizeMode.Zoom, Size = Tema.S(38, 38), Location = Tema.P(16, 22), BackColor = Renk.YanMenu };
+            var ad = Yazi.Etiket("Sem Ajan", 13f, true); ad.Location = Tema.P(60, 20); ad.BackColor = Renk.YanMenu;
+            var ad2 = Yazi.Etiket("Bilgisayar Yönetimi", 8.75f, false, Renk.Yazi2); ad2.Location = Tema.P(61, 42); ad2.BackColor = Renk.YanMenu;
             yan.Controls.AddRange(new Control[] { logo, ad, ad2 });
 
-            Func<string, string, MenuOgesi> menu = (m, ik) => { var o = new MenuOgesi(m, ik) { Width = yan.Width - Tema.S(24), Left = Tema.S(12) }; yan.Controls.Add(o); return o; };
+            Func<string, string, MenuOgesi> menu = (m, ik) => { var o = new MenuOgesi(m, ik) { Width = yan.Width - Tema.S(20), Left = Tema.S(10), Height = Tema.S(36) }; yan.Controls.Add(o); return o; };
             menuPc = menu("Bilgisayarlar", Ik.Masaustu); menuPc.Aktif = true;
             menuDuyuru = menu("Duyurular", Ik.Megafon);
             menuKayit = menu("Etkinlik", Ik.Gecmis);
@@ -76,13 +76,13 @@ namespace Sem.Yonetici
             menuAyar = menu("Ayarlar", Ik.Ayar);
 
             var slogan = Yazi.Etiket("Her adım bir başarı,\nher çocuk bir dünya.", 9f, false, Renk.Yazi2, false);
-            slogan.SetBounds(Tema.S(24), 0, yan.Width - Tema.S(40), Tema.S(44)); slogan.BackColor = Renk.YanMenu;
+            slogan.SetBounds(Tema.S(20), 0, yan.Width - Tema.S(32), Tema.S(44)); slogan.BackColor = Renk.YanMenu;
             var surum = Yazi.Etiket("Sürüm " + Sabitler.Surum, 8f, false, Renk.Yazi3); surum.BackColor = Renk.YanMenu;
             yan.Controls.Add(slogan); yan.Controls.Add(surum);
-            yan.Resize += (s, e) => { slogan.Top = yan.Height - Tema.S(86); surum.Location = new Point(Tema.S(24), yan.Height - Tema.S(36)); };
+            yan.Resize += (s, e) => { slogan.Top = yan.Height - Tema.S(86); surum.Location = new Point(Tema.S(20), yan.Height - Tema.S(36)); };
 
             // ------------------------------------------------ Bilgisayarlar sayfası
-            sayfaPc = new Panel { Dock = DockStyle.Fill, BackColor = Renk.Zemin, Padding = Tema.Pd(36, 28, 20, 0) };
+            sayfaPc = new Panel { Dock = DockStyle.Fill, BackColor = Renk.Zemin, Padding = Tema.Pd(28, 24, 16, 0) };
             var bas = new Panel { Dock = DockStyle.Top, Height = Tema.S(92), BackColor = Renk.Zemin };
             var eyebrow = Yazi.UstBaslik("Sem Özel Eğitim ve Rehabilitasyon Merkezi"); eyebrow.Location = new Point(0, 0);
             var h1 = Yazi.Etiket("Bilgisayarlar", 22f, true); h1.Location = new Point(-Tema.S(3), Tema.S(18));
@@ -377,21 +377,20 @@ namespace Sem.Yonetici
         /// <summary>Ayarlarda kapatılan özellikleri menülerden kaldırır, yan menüyü ve işlem çubuğunu yeniden dizer.</summary>
         void OzellikleriUygula()
         {
-            int y = Tema.S(96);
+            int y = Tema.S(84);
             foreach (var m in new[] { menuPc, menuDuyuru, menuKayit })
             {
                 bool gorunsun = m != menuDuyuru || ayarlar.Duyurular;
                 m.Visible = gorunsun;
-                if (gorunsun) { m.Top = y; y += Tema.S(44); }
+                if (gorunsun) { m.Top = y; y += Tema.S(40); }
             }
-            y += Tema.S(22);
-            yonetimBaslik.Location = new Point(Tema.S(24), y); y += Tema.S(24);
-            foreach (var m in new[] { menuEkle, menuSifre, menuGuncelle, menuAyar }) { m.Top = y; y += Tema.S(44); }
+            y += Tema.S(18);
+            yonetimBaslik.Location = new Point(Tema.S(20), y); y += Tema.S(22);
+            foreach (var m in new[] { menuEkle, menuSifre, menuGuncelle, menuAyar }) { m.Top = y; y += Tema.S(40); }
             if (!ayarlar.Duyurular && sayfaDuyuru.Visible) SayfaGoster(0);
 
             foreach (var b in islemDugmeleri) { islemCubugu.Controls.Remove(b); b.Dispose(); }
             islemDugmeleri.Clear();
-            int bx = Tema.S(196);
             var liste = new List<(string, string, Action, Color, bool)>
             {
                 ("Duyuru", Ik.Megafon, () => { var h = Hedefler(); if (h != null) DuyuruGonder(h); }, Renk.Yazi2, false),
@@ -407,8 +406,9 @@ namespace Sem.Yonetici
             liste.Add(("Diğer", Ik.Daha, null, Renk.Yazi2, false));
             foreach (var (metin, ikon, is_, renk, tut) in liste)
             {
-                var b = new Buton(metin, ikon, ButonTuru.Sade) { Dikey = true, ForeColorOzel = renk, Font = Tema.Yazi(8.5f), BasiliTut = tut };
-                b.BoyutAyarla(); b.Width = Math.Max(b.Width, Tema.S(80)); b.Location = new Point(bx, Tema.S(13)); b.BackColor = Color.Transparent;
+                var b = new Buton(metin, ikon, ButonTuru.Sade) { Dikey = true, ForeColorOzel = renk, Font = Tema.Yazi(8.25f), BasiliTut = tut, Tag = metin };
+                b.BackColor = Color.Transparent;
+                islemIpucu.SetToolTip(b, metin);
                 if (tut)
                 {
                     b.Onaylandi += (s, e) => Guvenli(is_);
@@ -417,9 +417,7 @@ namespace Sem.Yonetici
                 else if (is_ != null) b.Click += (s, e) => Guvenli(is_);
                 else b.Click += (s, e) => DigerMenu().Goster(b, true);
                 islemCubugu.Controls.Add(b); islemDugmeleri.Add(b);
-                bx += b.Width + Tema.S(2);
             }
-            islemCubugu.Width = bx + Tema.S(14);
 
             kartGorunum.Tur = ayarlar.Liste ? ButonTuru.Sade : ButonTuru.Ikincil;
             listeGorunum.Tur = ayarlar.Liste ? ButonTuru.Ikincil : ButonTuru.Sade;
@@ -449,9 +447,45 @@ namespace Sem.Yonetici
 
         int TostHedefY() => islemCubugu.Top - tost.Height - Tema.S(12);
 
+        readonly ToolTip islemIpucu = new ToolTip();
+
+        /// <summary>
+        /// Alt işlem çubuğu sığmazsa önce soldaki "x bilgisayar seçili" yazısı gizlenir, yine sığmazsa düğmeler yalnız simge olur.
+        /// Böylece pencere daraltılınca "Kapat" ve "Diğer" hiçbir zaman dışarıda kalmaz.
+        /// </summary>
+        void IslemCubuguSigdir(int gen)
+        {
+            if (islemDugmeleri.Count == 0) return;
+            for (int kip = 1; kip <= 3; kip++)
+            {
+                int bx = kip == 1 ? Tema.S(172) : Tema.S(10); // solda "x bilgisayar seçili" yazısına yer
+                foreach (var b in islemDugmeleri)
+                {
+                    if (kip == 3)
+                    {
+                        b.Text = ""; b.Dikey = false; b.Size = Tema.S(46, 46); b.Top = (islemCubugu.Height - b.Height) / 2;
+                    }
+                    else
+                    {
+                        b.Text = (string)b.Tag; b.Dikey = true; b.BoyutAyarla(); b.Width = Math.Max(b.Width, Tema.S(62)); b.Top = Tema.S(13);
+                    }
+                    b.Left = bx; bx += b.Width + (kip == 3 ? Tema.S(4) : 0);
+                }
+                int w = bx + Tema.S(10);
+                if (w <= gen || kip == 3)
+                {
+                    islemCubugu.Width = w;
+                    secimYazi.Visible = secimAlt.Visible = kip == 1;
+                    foreach (var b in islemDugmeleri) b.Invalidate();
+                    break;
+                }
+            }
+        }
+
         void Yerlestir()
         {
             int sol = sayfaPc.Padding.Left, gen = sayfaPc.ClientSize.Width - sol - sayfaPc.Padding.Right;
+            IslemCubuguSigdir(gen);
             islemCubugu.Location = new Point(sol + Math.Max(0, (gen - islemCubugu.Width) / 2), sayfaPc.ClientSize.Height - islemCubugu.Height - Tema.S(20));
             tost.Left = sayfaPc.ClientSize.Width - tost.Width - Tema.S(28);
             if (!tostAnim.Enabled) tost.Top = TostHedefY();
@@ -956,8 +990,13 @@ namespace Sem.Yonetici
                 ("Adıyla birlikte", "Sorun bildirirken hangi bilgisayar olduğu karışmaz", Ik.Etiket),
                 ("Sadece tasarım", "Köşede ad yazmaz", Ik.Resim));
             if (o2 < 0) return;
-            string kip = s == 0 ? "otomatik" : "kurumsal";
-            Uygula("Duvar kâğıdı: " + (s == 0 ? "otomatik" : "kurumsal"), h, p => { var m = new Mesaj("DUVAR_TASARIM"); m["kip"] = kip; m["oda"] = o2 == 0 ? "1" : "0"; m["kilit"] = "1"; m["koru"] = "1"; return m; }, 30000);
+            int o3 = MK.Secim(this, "Renk", "Duvar kâğıdı açık mı koyu mu olsun?",
+                ("Otomatik", "Bilgisayar Windows'ta koyu temadaysa koyu, değilse açık", Ik.Parilti),
+                ("Koyu", "Gece mavisi zemin, göz yormaz", Ik.Yildiz),
+                ("Açık", "Aydınlık, sıcak tonlar", Ik.Gunes));
+            if (o3 < 0) return;
+            string kip = s == 0 ? "otomatik" : "kurumsal", ton = o3 == 0 ? "otomatik" : o3 == 1 ? "koyu" : "";
+            Uygula("Duvar kâğıdı: " + (s == 0 ? "otomatik" : "kurumsal") + (ton == "koyu" ? ", koyu" : ton == "otomatik" ? ", tema" : ""), h, p => { var m = new Mesaj("DUVAR_TASARIM"); m["kip"] = kip; m["oda"] = o2 == 0 ? "1" : "0"; m["ton"] = ton; m["kilit"] = "1"; m["koru"] = "1"; return m; }, 30000);
         }
 
         /// <summary>

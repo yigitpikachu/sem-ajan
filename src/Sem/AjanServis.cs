@@ -554,7 +554,7 @@ namespace Sem.Ajan
                 }
 
                 case "DUVAR_TASARIM":
-                    AyarDegistir(a => { a.DuvarKip = m["kip"]; a.DuvarOda = m["oda"] == "1"; a.DuvarKilit = m["kilit"] != "0"; a.DuvarKoru = m["koru"] != "0"; });
+                    AyarDegistir(a => { a.DuvarKip = m["kip"]; a.DuvarOda = m["oda"] == "1"; if (m.Alan.ContainsKey("ton")) a.DuvarTon = m["ton"]; a.DuvarKilit = m["kilit"] != "0"; a.DuvarKoru = m["koru"] != "0"; });
                     DuvarGonder();
                     kilitGunu = DateTime.MinValue; KilitTasarimi();
                     return Mesaj.Basari(ayar.DuvarKip == "otomatik" ? "Duvar kâğıdı: mevsime ve özel günlere göre" : "Duvar kâğıdı: kurumsal");
@@ -714,10 +714,23 @@ namespace Sem.Ajan
         void DuvarGonder()
         {
             if (ayar.DuvarKip == "") EkranaGonder("DUVAR", AjanAyar.DuvarKagidi, ayar.DuvarKoru ? "1" : "0");
-            else EkranaGonder("DUVAR_CIZ", ayar.DuvarKip, ayar.DuvarOda ? ayar.GorunenAd : "", ayar.DuvarKoru ? "1" : "0");
+            else EkranaGonder("DUVAR_CIZ", ayar.DuvarKip, ayar.DuvarOda ? ayar.GorunenAd : "", ayar.DuvarKoru ? "1" : "0", ayar.DuvarTon);
         }
 
         DateTime kilitGunu = DateTime.MinValue;
+
+        /// <summary>Oturum açmış kullanıcılardan biri Windows'u koyu temada kullanıyor mu (kilit ekranı otomatik tonu için).</summary>
+        static bool KullaniciKoyuTemada()
+        {
+            try
+            {
+                foreach (var sid in Microsoft.Win32.Registry.Users.GetSubKeyNames().Where(x => x.StartsWith("S-1-5-21-") && !x.EndsWith("_Classes")))
+                    using (var k = Microsoft.Win32.Registry.Users.OpenSubKey(sid + @"\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                        if (k?.GetValue("SystemUsesLightTheme") is int v && v == 0) return true;
+            }
+            catch { }
+            return false;
+        }
 
         /// <summary>Tasarım kipinde kilit ekranını her gün yeniden çizer (özel günler için).</summary>
         void KilitTasarimi()
@@ -726,7 +739,7 @@ namespace Sem.Ajan
             kilitGunu = DateTime.Today;
             try
             {
-                var t = Sem.Arayuz.Duvar.Sec(ayar.DuvarKip, DateTime.Now);
+                var t = Sem.Arayuz.Duvar.Sec(ayar.DuvarKip, DateTime.Now, ayar.DuvarTon, KullaniciKoyuTemada());
                 var yol = Path.Combine(AjanAyar.Klasor, "kilit_" + DateTime.Now.ToString("yyyyMMdd") + ".png");
                 using (var logo = Sem.Arayuz.Tema.Logo())
                 using (var b = Sem.Arayuz.Duvar.Ciz(t, 1920, 1080, ayar.DuvarOda ? ayar.GorunenAd : "", logo)) b.Save(yol, ImageFormat.Png);
