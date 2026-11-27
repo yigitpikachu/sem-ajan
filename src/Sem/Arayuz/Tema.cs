@@ -200,7 +200,11 @@ namespace Sem.Arayuz
             if (sonuc != 1 /* HTCLIENT */ || f.WindowState != FormWindowState.Normal) return sonuc;
             var p = f.PointToClient(ekran); int w = f.ClientSize.Width, h = f.ClientSize.Height;
             bool sol = p.X < k, sag = p.X >= w - k, ust = p.Y < k, alt = p.Y >= h - k;
-            if (ust && sol) return 13; if (ust && sag) return 14; if (alt && sol) return 16; if (alt && sag) return 17;
+            // Köşe alanı geniş tutulur: yuvarlak köşede asıl köşe pikselleri kesik olduğundan kenar boyunca köşeye yakın bölge de çapraz boyutlar
+            int c = k * 4;
+            bool solK = p.X < c, sagK = p.X >= w - c, ustK = p.Y < c, altK = p.Y >= h - c;
+            if ((ust || sol) && ustK && solK) return 13; if ((ust || sag) && ustK && sagK) return 14;
+            if ((alt || sol) && altK && solK) return 16; if ((alt || sag) && altK && sagK) return 17;
             if (sol) return 10; if (sag) return 11; if (ust) return 12; if (alt) return 15;
             return sonuc;
         }
