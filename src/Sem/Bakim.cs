@@ -84,6 +84,38 @@ namespace Sem.Ajan
             return l;
         }
 
+        /// <summary>Office lisans durumu: kalıcı/toplu lisans SPP'den, Microsoft 365 aboneliği hesap lisans dosyalarından.</summary>
+        static string OfficeLisans()
+        {
+            string urun = "";
+            try { using (var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Office\ClickToRun\Configuration")) urun = Convert.ToString(k?.GetValue("ProductReleaseIds")) ?? ""; } catch { }
+            string etkin = null, etkinDegil = null;
+            foreach (var o in Wmi(@"root\cimv2", "SELECT Name, LicenseStatus FROM SoftwareLicensingProduct WHERE ApplicationID='0ff1ce15-a989-479d-af46-f275c6370663' AND PartialProductKey IS NOT NULL"))
+            {
+                var ad = S(o, "Name"); int v = ad.IndexOf(", "); if (v >= 0) ad = ad.Substring(v + 2);
+                ad = ad.Replace(" edition", "");
+                if (S(o, "LicenseStatus") == "1") etkin = ad; else etkinDegil = ad;
+            }
+            if (etkin != null) return "Etkin (" + etkin + ")";
+            if (urun.IndexOf("O365", StringComparison.OrdinalIgnoreCase) >= 0 || urun.IndexOf("M365", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                bool hesap = false;
+                try
+                {
+                    var kok = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory), "Users");
+                    foreach (var u in Directory.GetDirectories(kok))
+                    {
+                        var l = Path.Combine(u, @"AppData\Local\Microsoft\Office\Licenses");
+                        if (Directory.Exists(l) && Directory.EnumerateFiles(l, "*", SearchOption.AllDirectories).Any()) { hesap = true; break; }
+                    }
+                }
+                catch { }
+                return hesap ? "Microsoft 365, hesapla etkin" : "Microsoft 365, oturum açılmamış (etkin değil)";
+            }
+            if (etkinDegil != null) return "Etkin değil (" + etkinDegil + ")";
+            return urun != "" ? "Etkin değil (" + urun.Split(',')[0] + ")" : "Kurulu değil";
+        }
+
         public static Mesaj Topla()
         {
             var r = Mesaj.Basari();
@@ -100,6 +132,7 @@ namespace Sem.Ajan
             catch { }
             foreach (var o in Wmi(@"root\cimv2", "SELECT LicenseStatus FROM SoftwareLicensingProduct WHERE ApplicationID='55c92734-d682-4d71-983e-d6ec3f16059f' AND PartialProductKey IS NOT NULL"))
                 if (S(o, "LicenseStatus") == "1") { r["lisans"] = "Etkin"; break; } else r["lisans"] = "Etkin değil";
+            try { r["office"] = OfficeLisans(); } catch { }
             foreach (var o in Wmi(@"root\cimv2", "SELECT Name FROM Win32_Processor")) { r["islemci"] = S(o, "Name"); break; }
             foreach (var o in Wmi(@"root\cimv2", "SELECT Manufacturer, Model, TotalPhysicalMemory FROM Win32_ComputerSystem"))
             {

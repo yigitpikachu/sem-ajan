@@ -215,7 +215,17 @@ namespace Sem.Yonetici
                 try
                 {
                     using (var ys = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\SemYeniSurum"))
-                        while (ys.WaitOne()) { PanelKaydi("sinyal geldi"); BeginInvoke((Action)(() => { sonSurumDenetimi = DateTime.MinValue; SurumDenetle(); })); }
+                        while (ys.WaitOne())
+                        {
+                            PanelKaydi("sinyal geldi");
+                            // Sinyal, dosya yerine konmadan biraz önce gelebilir: 2 dakika boyunca 3 saniyede bir bakılır
+                            for (int i = 0; i < 40 && !IsDisposed; i++)
+                            {
+                                BeginInvoke((Action)(() => { sonSurumDenetimi = DateTime.MinValue; SurumDenetle(); }));
+                                Thread.Sleep(3000);
+                                if (yeniSurumGoruldu != null) break;
+                            }
+                        }
                 }
                 catch (Exception ex) { PanelKaydi("sinyal dinlenemedi: " + ex.Message); }
             }) { IsBackground = true }.Start();
@@ -450,32 +460,16 @@ namespace Sem.Yonetici
                 if (v.ProductName != "Sem Ajan" || new Version(v.FileMajorPart, v.FileMinorPart, v.FileBuildPart) <= Version.Parse(Sabitler.Surum)) return;
                 yeni = v.FileMajorPart + "." + v.FileMinorPart + "." + v.FileBuildPart;
                 if (!Visible) { PanelKaydi("gizli, yeni sürümle açılıyor"); YeniSurumeGec(false); return; }
-                if (yeniSurumGoruldu == null) { yeniSurumGoruldu = DateTime.Now; Kaydet("Yeni sürüm kuruldu: " + yeni + ". Panel yeni sürüme geçiyor."); }
-
-                // Yalnızca yarım kalabilecek işler beklenir: açık bir diyalog (duyuru yazma, ayarlar...) veya uzaktan kontrol.
-                var engel = Application.OpenForms.Cast<Form>()
-                    .Where(f => f != this && f.Visible && !f.IsDisposed && (f.Modal || f is UzakForm)).ToList();
-                if (engel.Count > 0)
-                {
-                    var adlar = string.Join(", ", engel.Select(f => string.IsNullOrWhiteSpace(f.Text) ? f.GetType().Name : f.Text));
-                    if (adlar != engelKaydi) { engelKaydi = adlar; Kaydet("Yeni sürüme geçiş bekliyor, açık pencere: " + adlar); PanelKaydi("bekliyor: " + adlar); }
-                    yenidenBaslat = null;
-                }
-                else if (yenidenBaslat == null)
-                {
-                    yenidenBaslat = DateTime.Now.AddSeconds(5);
-                    Tost("Sem Ajan " + yeni + " sürümüne geçiliyor, pencere birkaç saniye içinde yeniden açılacak.");
-                }
-                else if (DateTime.Now >= yenidenBaslat) { PanelKaydi("yeni sürümle açılıyor"); YeniSurumeGec(true); return; }
+                if (yeniSurumGoruldu == null) { yeniSurumGoruldu = DateTime.Now; Kaydet("Yeni sürüm kuruldu: " + yeni + "."); PanelKaydi("yeni sürüm kartı"); }
+                // Açık panelde hemen "Yeniden aç" kartı: tek tıkla yeni sürüme geçilir
+                SurumKartiGoster(yeni);
+                return;
             }
             catch (Exception ex)
             {
                 PanelKaydi("hata: " + ex);
                 if (!gecisHatasiKaydedildi) { gecisHatasiKaydedildi = true; Kaydet("Yeni sürüme geçilemedi: " + ex.Message, 2); }
             }
-            // 30 saniyede geçilemediyse elle yeniden açma kartı
-            if (yeniSurumGoruldu != null && Visible && (DateTime.Now - yeniSurumGoruldu.Value).TotalSeconds >= 30)
-                SurumKartiGoster(yeni);
         }
 
         string sonPanelKaydi = "";
@@ -688,6 +682,7 @@ namespace Sem.Yonetici
             if (ayarlar.Yazici) m.Ekle("Yazıcı kur", Ik.Yazici, () => Guvenli(YaziciKur)).Ekle("Yazıcıyı onar", Ik.Anahtar_, () => Guvenli(YaziciOnar)).Ekle("Yazıcıyı sabitle", Ik.Kalkan, () => Guvenli(YaziciSabitle));
             if (ayarlar.Program) m.Ekle("Program kur", Ik.ProgramEkle, () => Guvenli(ProgramKur));
             m.Ekle("Masaüstü düzeni", Ik.Firca, () => Guvenli(MasaustuDuzeni));
+            m.Ekle("Lisanslar", Ik.Kalkan, () => Guvenli(() => { var h = AcikHedefler(true); if (h.Count == 0) Tost("Açık bilgisayar yok."); else using (var f = new LisansForm(h)) f.ShowDialog(this); }));
             m.Ekle("Dosyadan güncelle", Ik.Esitle, () => Guvenli(SemGuncelle)).Ayrac()
              .Ekle("Bekleyen kapatmayı iptal et", Ik.KapatDaire, () => Guvenli(KapatmayiIptal))
              .Ekle("Hemen kapat", Ik.Guc, () => Guvenli(HemenKapat), true)

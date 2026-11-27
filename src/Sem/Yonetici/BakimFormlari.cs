@@ -273,7 +273,8 @@ namespace Sem.Yonetici
                 govde.Controls.Add(a); govde.Controls.Add(d); y += Tema.S(26);
             }
             Satir("Windows", veri["windows"]);
-            Satir("Lisans", veri["lisans"]);
+            Satir("Windows lisansı", veri["lisans"]);
+            Satir("Office", veri["office"]);
             Satir("Model", veri["model"]);
             Satir("Seri no", veri["seri"]);
             Satir("İşlemci", veri["islemci"]);
@@ -307,7 +308,7 @@ namespace Sem.Yonetici
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 string Q(string x) => "\"" + (x ?? "").Replace("\"", "\"\"") + "\"";
                 var sb = new StringBuilder("sep=;\r\n");
-                foreach (var k in new[] { ("Bilgisayar", pc.Baslik), ("Windows", veri["windows"]), ("Lisans", veri["lisans"]), ("Model", veri["model"]), ("Seri no", veri["seri"]),
+                foreach (var k in new[] { ("Bilgisayar", pc.Baslik), ("Windows", veri["windows"]), ("Windows lisansı", veri["lisans"]), ("Office", veri["office"]), ("Model", veri["model"]), ("Seri no", veri["seri"]),
                     ("İşlemci", veri["islemci"]), ("Bellek", veri["ram"]), ("Diskler", veri["diskler"].Replace("\n", " / ")), ("C:", veri["c_bos"]), ("IP", pc.Ip), ("MAC", pc.Mac) })
                     sb.Append(Q(k.Item1) + ";" + Q(k.Item2) + "\r\n");
                 sb.Append("\r\n" + Q("Program") + ";" + Q("Sürüm") + "\r\n");
@@ -616,6 +617,68 @@ namespace Sem.Yonetici
                     }));
                 }
                 catch { }
+            });
+        }
+    }
+}
+
+namespace Sem.Yonetici
+{
+    /// <summary>Tüm açık bilgisayarların Windows ve Office lisans durumu tek listede.</summary>
+    class LisansForm : ModernForm
+    {
+        public LisansForm(List<Pc> pcler) : base("Lisanslar", 680, 520)
+        {
+            SabitBoyut = true;
+            int g = Icerik.Width;
+            var govde = new Panel { AutoScroll = true, BackColor = Renk.Zemin };
+            var kutu = InceKaydirma.Sar(govde); kutu.SetBounds(0, 0, g, Icerik.Height - Tema.S(48));
+            var durum = Yazi.Etiket("Lisans bilgileri alınıyor…", 9.5f, false, Renk.Yazi2, false);
+            durum.SetBounds(0, Icerik.Height - Tema.S(36), g, Tema.S(36)); durum.TextAlign = ContentAlignment.MiddleLeft;
+            Icerik.Controls.Add(kutu); Icerik.Controls.Add(durum);
+            int w = g - Tema.S(26);
+            var b1 = Yazi.UstBaslik("Bilgisayar", Renk.Yazi3); b1.Location = new Point(0, 0);
+            var b2 = Yazi.UstBaslik("Windows", Renk.Yazi3); b2.Location = new Point(Tema.S(190), 0);
+            var b3 = Yazi.UstBaslik("Office", Renk.Yazi3); b3.Location = new Point(Tema.S(330), 0);
+            govde.Controls.AddRange(new Control[] { b1, b2, b3 });
+            var satirlar = new Dictionary<Pc, (Label win, Label off)>();
+            int y = Tema.S(26);
+            foreach (var p in pcler.OrderBy(x => x.Baslik))
+            {
+                var ad = Yazi.Etiket(p.Baslik, 10f, true, Renk.Yazi, false); ad.SetBounds(0, y, Tema.S(186), Tema.S(24)); ad.AutoEllipsis = true;
+                var wl = Yazi.Etiket("…", 9.5f, false, Renk.Yazi3, false); wl.SetBounds(Tema.S(190), y + Tema.S(2), Tema.S(136), Tema.S(22));
+                var ol = Yazi.Etiket("…", 9.5f, false, Renk.Yazi3, false); ol.SetBounds(Tema.S(330), y + Tema.S(2), w - Tema.S(330), Tema.S(22)); ol.AutoEllipsis = true;
+                govde.Controls.AddRange(new Control[] { ad, wl, ol });
+                satirlar[p] = (wl, ol);
+                y += Tema.S(32);
+            }
+            Shown += (s, e) => Task.Run(() =>
+            {
+                int sorunlu = 0;
+                Parallel.ForEach(satirlar.Keys.ToList(), p =>
+                {
+                    string win, off;
+                    try
+                    {
+                        var c = Baglanti.Gonder(p.Ip, new Mesaj("ENVANTER"), 30000);
+                        win = c.Tamam ? (c["lisans"] == "" ? "?" : c["lisans"]) : c["aciklama"];
+                        off = c.Tamam ? (c["office"] == "" ? "Sem güncellenmeli" : c["office"]) : "";
+                    }
+                    catch (Exception ex) { win = "Ulaşılamadı"; off = ex.Message; }
+                    bool winOk = win == "Etkin", offOk = off.StartsWith("Etkin (") || off.Contains("hesapla etkin");
+                    if (!winOk || !offOk) Interlocked.Increment(ref sorunlu);
+                    try
+                    {
+                        BeginInvoke((Action)(() =>
+                        {
+                            var (wl, ol) = satirlar[p];
+                            wl.Text = win; wl.ForeColor = winOk ? Renk.YesilKoyu : Renk.PembeKoyu;
+                            ol.Text = off; ol.ForeColor = offOk ? Renk.YesilKoyu : off == "Kurulu değil" ? Renk.Yazi3 : Renk.PembeKoyu;
+                        }));
+                    }
+                    catch { }
+                });
+                try { BeginInvoke((Action)(() => { durum.Text = sorunlu == 0 ? "✓ Hepsi lisanslı" : sorunlu + " bilgisayarda lisans sorunu var"; durum.ForeColor = sorunlu == 0 ? Renk.YesilKoyu : Renk.PembeKoyu; })); } catch { }
             });
         }
     }
