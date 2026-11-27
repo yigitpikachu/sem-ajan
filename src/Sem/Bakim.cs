@@ -198,7 +198,86 @@ namespace Sem.Ajan
                 if (b.ad != null) sb.Append(satir.Substring(0, i) + "|" + b.ad + "|" + b.surum + "\n");
             }
             var r = Mesaj.Basari(); r["kurulu"] = sb.ToString(); r["winget"] = Winget() != null ? "1" : "0";
+            r["tum"] = string.Join("\n", kurulu.OrderBy(p => p.ad).Select(p => p.ad.Replace("|", " ") + "|" + p.surum));
             return r;
+        }
+
+        class Kayit { public string Ad, Komut, Sessiz; public bool Kullanici; public RegistryKey Kok; public string Yol; }
+
+        static List<Kayit> Bul(string ad)
+        {
+            var l = new List<Kayit>();
+            const string u = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+            void Tara(RegistryKey kok, string yol, bool kullanici)
+            {
+                try
+                {
+                    using (var k = kok.OpenSubKey(yol))
+                        if (k != null)
+                            foreach (var a in k.GetSubKeyNames())
+                                using (var p = k.OpenSubKey(a))
+                                    if (string.Equals(Convert.ToString(p?.GetValue("DisplayName"))?.Trim(), ad, StringComparison.OrdinalIgnoreCase))
+                                        l.Add(new Kayit { Ad = ad, Komut = Convert.ToString(p.GetValue("UninstallString")) ?? "", Sessiz = Convert.ToString(p.GetValue("QuietUninstallString")) ?? "", Kullanici = kullanici, Kok = kok, Yol = yol + "\\" + a });
+                }
+                catch { }
+            }
+            foreach (var g in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+                try { Tara(RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, g), u, false); } catch { }
+            try { foreach (var sid in Registry.Users.GetSubKeyNames().Where(x => x.StartsWith("S-1-5-21") && !x.EndsWith("_Classes"))) Tara(Registry.Users, sid + "\\" + u, true); } catch { }
+            return l;
+        }
+
+        static bool HalaVar(Kayit k) { try { using (var x = k.Kok.OpenSubKey(k.Yol)) return x != null; } catch { return false; } }
+
+        /// <summary>Kaldırma komutunu sessiz hale getirir: exe ve argümanlar.</summary>
+        static (string exe, string arg) SessizKomut(Kayit k)
+        {
+            string ayir(string c, out string arg)
+            {
+                c = c.Trim(); arg = "";
+                if (c.StartsWith("\"")) { int j = c.IndexOf('"', 1); if (j > 0) { arg = c.Substring(j + 1).Trim(); return c.Substring(1, j - 1); } }
+                int i = c.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+                if (i > 0) { arg = c.Substring(i + 4).Trim(); return c.Substring(0, i + 4); }
+                return c;
+            }
+            string a;
+            if (k.Sessiz != "") { var e = ayir(k.Sessiz, out a); return (e, a); }
+            var exe = ayir(k.Komut, out a);
+            if (Path.GetFileName(exe).Equals("msiexec.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(a, @"\{[0-9A-Fa-f\-]+\}");
+                return (exe, (m.Success ? "/X" + m.Value : a.Replace("/I", "/X").Replace("/i", "/X")) + " /qn /norestart");
+            }
+            var dosya = Path.GetFileName(exe).ToLowerInvariant();
+            if (dosya.StartsWith("unins")) return (exe, a + " /VERYSILENT /SUPPRESSMSGBOXES /NORESTART");
+            if (exe.IndexOf("Kingsoft", StringComparison.OrdinalIgnoreCase) >= 0 || exe.IndexOf("WPS", StringComparison.OrdinalIgnoreCase) >= 0) return (exe, (a.Contains("-uninstall") ? a : a + " -uninstall") + " /s");
+            return (exe, a + " /S");
+        }
+
+        /// <summary>Programı adıyla bulup sessiz kaldırır (makine geneli: hizmet olarak; kullanıcıya kurulu: ekrandaki oturumda).</summary>
+        public static string Kaldir(string ad)
+        {
+            var kayitlar = Bul(ad);
+            if (kayitlar.Count == 0) return "zaten kurulu değil";
+            var sonuc = new List<string>();
+            foreach (var k in kayitlar)
+            {
+                var (exe, arg) = SessizKomut(k);
+                if (!File.Exists(exe)) { try { using (var ust = k.Kok.OpenSubKey(Path.GetDirectoryName(k.Yol), true)) ust?.DeleteSubKeyTree(Path.GetFileName(k.Yol), false); } catch { } sonuc.Add("kalıntı kayıt silindi"); continue; }
+                if (k.Kullanici)
+                {
+                    if (!Yerel.KullanicidaBaslat(exe, arg)) { sonuc.Add("HATA: kullanıcıya kurulu, ekranda oturum açık olmalı"); continue; }
+                    for (int i = 0; i < 60 && HalaVar(k); i++) Thread.Sleep(5000);
+                    sonuc.Add(HalaVar(k) ? "HATA: kaldırma ekranda bekliyor olabilir" : "kaldırıldı");
+                    continue;
+                }
+                var psi = new ProcessStartInfo(exe, arg) { UseShellExecute = false, CreateNoWindow = true };
+                using (var p = Process.Start(psi))
+                    if (!p.WaitForExit(10 * 60 * 1000)) { try { p.Kill(); } catch { } }
+                for (int i = 0; i < 12 && HalaVar(k); i++) Thread.Sleep(5000); // bazı kaldırıcılar ayrı işlem açar
+                sonuc.Add(HalaVar(k) ? "HATA: kaldırılamadı (program sessiz kaldırmayı desteklemiyor olabilir)" : "kaldırıldı");
+            }
+            return sonuc.Any(x => !x.StartsWith("HATA")) ? sonuc.First(x => !x.StartsWith("HATA")) : sonuc.First();
         }
 
         public static string Winget()

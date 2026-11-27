@@ -680,7 +680,7 @@ namespace Sem.Yonetici
             if (ayarlar.Duvar) m.Ekle("Duvar kâğıdı", Ik.Resim, () => Guvenli(DuvarKagidi));
             m.Ekle("Uyandır (aç)", Ik.Gunes, () => Guvenli(Uyandir)).Ayrac();
             if (ayarlar.Yazici) m.Ekle("Yazıcı kur", Ik.Yazici, () => Guvenli(YaziciKur)).Ekle("Yazıcıyı onar", Ik.Anahtar_, () => Guvenli(YaziciOnar)).Ekle("Yazıcıyı sabitle", Ik.Kalkan, () => Guvenli(YaziciSabitle));
-            if (ayarlar.Program) m.Ekle("Program kur", Ik.ProgramEkle, () => Guvenli(ProgramKur));
+            if (ayarlar.Program) m.Ekle("Program ekle/kaldır", Ik.ProgramEkle, () => Guvenli(ProgramKur));
             m.Ekle("Masaüstü düzeni", Ik.Firca, () => Guvenli(MasaustuDuzeni));
             m.Ekle("Lisanslar", Ik.Kalkan, () => Guvenli(() => { var h = AcikHedefler(true); if (h.Count == 0) Tost("Açık bilgisayar yok."); else using (var f = new LisansForm(h)) f.ShowDialog(this); }));
             m.Ekle("Dosyadan güncelle", Ik.Esitle, () => Guvenli(SemGuncelle)).Ayrac()
@@ -1316,6 +1316,12 @@ namespace Sem.Yonetici
                 f.ShowDialog(this);
                 if (f.Sonuc == null) return;
                 if (f.Sonuc.Value.dosyadan) { DosyadanKur(h); return; }
+                if (f.Kaldir)
+                {
+                    var kad = f.Sonuc.Value.ad;
+                    Uygula("Kaldır: " + kad, f.Sonuc.Value.hedefler, p => { var m = new Mesaj("PROGRAM_KALDIR"); m["ad"] = kad; return m; });
+                    return;
+                }
                 var (id, ad, guncelle, hedefler) = (f.Sonuc.Value.id, f.Sonuc.Value.ad, f.Sonuc.Value.guncelle, f.Sonuc.Value.hedefler);
                 if (hedefler.Count == 0) return;
                 Uygula((guncelle ? "Güncelle: " : "Kur: ") + ad, hedefler, p => { var m = new Mesaj("PROGRAM_WINGET"); m["id"] = id; m["ad"] = ad; m["islem"] = guncelle ? "guncelle" : "kur"; return m; });

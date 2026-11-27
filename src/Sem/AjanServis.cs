@@ -495,6 +495,14 @@ namespace Sem.Ajan
 
                 case "PROGRAM_DURUM": return Programlar.Durum(m["adlar"]);
 
+                case "PROGRAM_KALDIR":
+                {
+                    var ad = m["ad"];
+                    if (string.IsNullOrWhiteSpace(ad)) return Mesaj.Hata("Program adı yok");
+                    Arkaplan("Kaldır: " + ad, () => Programlar.Kaldir(ad));
+                    return Mesaj.Basari("Kaldırma başladı, sonucu Etkinlik sayfasında görünecek");
+                }
+
                 case "PROGRAM_WINGET":
                 {
                     var id = m["id"]; var ad = m["ad"]; var islem = m["islem"] == "guncelle" ? "upgrade" : "install";

@@ -333,6 +333,13 @@ namespace Sem.Yonetici
         };
 
         public (string id, string ad, bool guncelle, List<Pc> hedefler, bool dosyadan)? Sonuc;
+        public bool Kaldir;
+        readonly ConcurrentDictionary<Pc, HashSet<string>> tum = new ConcurrentDictionary<Pc, HashSet<string>>();
+        List<string> tumAdlar = new List<string>();
+        readonly Dictionary<string, string> surumler = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        bool kaldirModu;
+        readonly HapSecici mod;
+        readonly Buton kaldir, dosyadan;
         readonly List<Pc> hedefler;
         readonly ConcurrentDictionary<Pc, Dictionary<string, (string ad, string surum)>> kurulu = new ConcurrentDictionary<Pc, Dictionary<string, (string, string)>>();
         readonly ConcurrentDictionary<Pc, string> hata = new ConcurrentDictionary<Pc, string>();
@@ -341,12 +348,14 @@ namespace Sem.Yonetici
         readonly Buton kur, guncelle;
         bool yuklendi;
 
-        public ProgramForm(List<Pc> hedefler) : base("Program kur", 600, 620)
+        public ProgramForm(List<Pc> hedefler) : base("Program ekle/kaldır", 600, 640)
         {
             this.hedefler = hedefler;
             int g = Icerik.Width;
-            var ust = Yazi.Etiket(hedefler.Count == 1 ? hedefler[0].Baslik : hedefler.Count + " bilgisayar seçili", 9.5f, false, Renk.Yazi2); ust.Location = new Point(0, 0);
-            var kart = new KartPanel { Location = new Point(0, Tema.S(28)), Size = new Size(g, Icerik.Height - Tema.S(28 + 140)), Padding = Tema.Pd(6, 8, 6, 8), BackColor = Renk.Zemin, Golge = false };
+            mod = new HapSecici(("Kur", Renk.Mavi), ("Kurulu olanlar / Kaldır", Renk.PembeKoyu)) { Location = new Point(0, 0), Width = g - Tema.S(170) };
+            var ust = Yazi.Etiket(hedefler.Count == 1 ? hedefler[0].Baslik : hedefler.Count + " bilgisayar seçili", 9.5f, false, Renk.Yazi2, false);
+            ust.SetBounds(g - Tema.S(170), Tema.S(8), Tema.S(170), Tema.S(24)); ust.TextAlign = ContentAlignment.TopRight;
+            var kart = new KartPanel { Location = new Point(0, Tema.S(46)), Size = new Size(g, Icerik.Height - Tema.S(46 + 140)), Padding = Tema.Pd(6, 8, 6, 8), BackColor = Renk.Zemin, Golge = false };
             liste = new ListBox { Dock = DockStyle.Fill, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = Tema.S(46), BorderStyle = BorderStyle.None, BackColor = Renk.Yuzey, IntegralHeight = false };
             foreach (var k in Katalog) liste.Items.Add(k.Ad);
             liste.DrawItem += CizOge;
@@ -354,7 +363,7 @@ namespace Sem.Yonetici
             kart.Controls.Add(InceKaydirma.Sar(liste));
             durum = Yazi.Etiket("Bilgisayarlardaki programlara bakılıyor…", 9.5f, false, Renk.Yazi2, false);
             durum.SetBounds(0, kart.Bottom + Tema.S(10), g, Tema.S(70));
-            var dosyadan = new Buton("Dosyadan kur…", Ik.Belge, ButonTuru.Sade);
+            dosyadan = new Buton("Dosyadan kur…", Ik.Belge, ButonTuru.Sade);
             dosyadan.Location = new Point(-Tema.S(8), Icerik.Height - dosyadan.Height);
             dosyadan.Click += (s, e) => { Sonuc = (null, null, false, null, true); Close(); };
             kur = new Buton("Kur", Ik.Indir, ButonTuru.Birincil) { Enabled = false };
@@ -362,9 +371,16 @@ namespace Sem.Yonetici
             kur.Width = Math.Max(kur.Width, Tema.S(110));
             kur.Location = new Point(g - kur.Width, Icerik.Height - kur.Height);
             guncelle.Location = new Point(kur.Left - guncelle.Width - Tema.S(8), kur.Top);
+            kaldir = new Buton("Kaldır", Ik.Sil, ButonTuru.Birincil) { Enabled = false, BasiliTut = true };
+            kaldir.Width = Math.Max(kaldir.Width, Tema.S(120));
+            kaldir.Location = new Point(g - kaldir.Width, Icerik.Height - kaldir.Height);
+            kaldir.Onaylandi += (s, e) => KaldirBitir();
+            kaldir.KisaBasildi += (s, e) => { durum.Text = "Yanlışlıkla olmasın diye \"Kaldır\"ı dolana kadar basılı tutun."; durum.ForeColor = Renk.Turuncu; };
+            mod.Degisti += (s, e) => ModDegisti();
             kur.Click += (s, e) => Bitir(false);
             guncelle.Click += (s, e) => Bitir(true);
-            Icerik.Controls.AddRange(new Control[] { ust, kart, durum, dosyadan, kur, guncelle });
+            Icerik.Controls.AddRange(new Control[] { mod, ust, kart, durum, dosyadan, kur, guncelle, kaldir });
+            Shown += (s, e) => kaldir.Visible = kaldirModu;
             Shown += (s, e) => Task.Run(Tara);
         }
 
@@ -382,11 +398,15 @@ namespace Sem.Yonetici
                     var d = new Dictionary<string, (string, string)>();
                     foreach (var s in c["kurulu"].Split('\n').Where(x => x.Contains('|'))) { var a = s.Split('|'); d[a[0]] = (a[1], a.Length > 2 ? a[2] : ""); }
                     kurulu[p] = d;
+                    var t = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var s in c["tum"].Split('\n').Where(x => x.Contains('|'))) { var a = s.Split('|'); t.Add(a[0]); lock (surumler) surumler[a[0]] = a[1]; }
+                    tum[p] = t;
                 }
                 catch (Exception ex) { hata[p] = ex.Message.StartsWith("Bilgisayara") ? "kapalı" : ex.Message; }
             });
             yuklendi = true;
-            try { BeginInvoke((Action)(() => { liste.Invalidate(); if (liste.SelectedIndex < 0) durum.Text = "Kurmak ya da güncellemek istediğiniz programı seçin."; else Guncelle(); })); } catch { }
+            tumAdlar = tum.Values.SelectMany(x => x).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.Create(new System.Globalization.CultureInfo("tr-TR"), true)).ToList();
+            try { BeginInvoke((Action)(() => { if (kaldirModu) ModDegisti(); liste.Invalidate(); if (liste.SelectedIndex < 0) durum.Text = "Kurmak ya da güncellemek istediğiniz programı seçin."; else Guncelle(); })); } catch { }
         }
 
         int KuruluSayisi(string id) => kurulu.Count(kv => kv.Value.ContainsKey(id));
@@ -394,6 +414,7 @@ namespace Sem.Yonetici
         void CizOge(object s, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
+            if (kaldirModu) { CizKurulu(e); return; }
             var k = Katalog[e.Index];
             var g = e.Graphics; Tema.Kaliteli(g);
             bool sec = (e.State & DrawItemState.Selected) != 0;
@@ -411,8 +432,58 @@ namespace Sem.Yonetici
             }
         }
 
+        void CizKurulu(DrawItemEventArgs e)
+        {
+            if (e.Index >= tumAdlar.Count) return;
+            var ad = tumAdlar[e.Index];
+            var g = e.Graphics; Tema.Kaliteli(g);
+            bool sec = (e.State & DrawItemState.Selected) != 0;
+            using (var b = new SolidBrush(Renk.Yuzey)) g.FillRectangle(b, e.Bounds);
+            var r = new RectangleF(e.Bounds.X + Tema.S(4), e.Bounds.Y + Tema.S(2), e.Bounds.Width - Tema.S(8), e.Bounds.Height - Tema.S(4));
+            if (sec) using (var p = Tema.Yuvarlak(r, Tema.S(8))) using (var b = new SolidBrush(Color.FromArgb(252, 231, 238))) g.FillPath(b, p);
+            Tema.IkonCiz(g, Ik.Uygulamalar, 13f, Renk.Yazi3, new RectangleF(r.X + Tema.S(6), r.Y, Tema.S(32), r.Height));
+            string sr; lock (surumler) surumler.TryGetValue(ad, out sr);
+            Tema.YaziCiz(g, ad, Tema.YaziKalin(10f), Renk.Yazi, new RectangleF(r.X + Tema.S(46), r.Y + Tema.S(4), r.Width - Tema.S(200), r.Height / 2));
+            Tema.YaziCiz(g, sr ?? "", Tema.Yazi(8.5f), Renk.Yazi3, new RectangleF(r.X + Tema.S(46), r.Y + r.Height / 2 - Tema.S(2), r.Width - Tema.S(200), r.Height / 2));
+            int n = tum.Count(kv => kv.Value.Contains(ad));
+            var t = hedefler.Count == 1 ? "kurulu" : n == tum.Count ? "hepsinde kurulu" : n + "/" + tum.Count + " bilgisayarda";
+            Tema.YaziCiz(g, t, Tema.Yazi(8.75f), Renk.Yazi2, new RectangleF(r.Right - Tema.S(170), r.Y, Tema.S(160), r.Height), StringAlignment.Far);
+        }
+
+        void ModDegisti()
+        {
+            kaldirModu = mod.Secili == 1;
+            liste.BeginUpdate(); liste.Items.Clear();
+            if (kaldirModu) foreach (var a in tumAdlar) liste.Items.Add(a); else foreach (var k in Katalog) liste.Items.Add(k.Ad);
+            liste.EndUpdate();
+            kur.Visible = guncelle.Visible = dosyadan.Visible = !kaldirModu;
+            kaldir.Visible = kaldirModu; kaldir.Enabled = false;
+            durum.ForeColor = Renk.Yazi2;
+            durum.Text = !yuklendi ? "Bilgisayarlardaki programlara bakılıyor…" : kaldirModu ? "Kaldırmak istediğiniz programı seçin. Kaldırma sessiz yapılır, sonucu Etkinlik sayfasında görünür." : "Kurmak ya da güncellemek istediğiniz programı seçin.";
+        }
+
+        void KaldirBitir()
+        {
+            if (!kaldirModu || liste.SelectedIndex < 0 || liste.SelectedIndex >= tumAdlar.Count) return;
+            var ad = tumAdlar[liste.SelectedIndex];
+            var h = tum.Where(kv => kv.Value.Contains(ad)).Select(kv => kv.Key).ToList();
+            if (h.Count == 0) return;
+            Kaldir = true; Sonuc = (null, ad, false, h, false);
+            Close();
+        }
+
         void Guncelle()
         {
+            if (kaldirModu)
+            {
+                if (liste.SelectedIndex < 0 || !yuklendi || liste.SelectedIndex >= tumAdlar.Count) return;
+                var ad = tumAdlar[liste.SelectedIndex];
+                var h = tum.Where(kv => kv.Value.Contains(ad)).Select(kv => kv.Key.Baslik).ToList();
+                durum.Text = "Kaldırılacak: " + ad + "\n" + string.Join(", ", h) + "\nKaldırmak için \"Kaldır\"ı basılı tutun.";
+                durum.ForeColor = Renk.Yazi2;
+                kaldir.Enabled = h.Count > 0; kaldir.Invalidate();
+                return;
+            }
             if (liste.SelectedIndex < 0 || !yuklendi) return;
             var k = Katalog[liste.SelectedIndex];
             var var_ = kurulu.Where(kv => kv.Value.ContainsKey(k.Id)).Select(kv => kv.Key).ToList();
