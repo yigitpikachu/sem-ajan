@@ -33,17 +33,72 @@ namespace Sem.Yonetici
         public string Ikon => Simge != "" ? Simge : Ik.Masaustu;
     }
 
-    /// <summary>Oda grupları; her birinin kendi rengi var.</summary>
+    /// <summary>Oda grupları. Adları yönetici belirler (gruplar.txt); renk koddan gelir, böylece her bilgisayarda aynı renk görünür.
+    /// Son grup her zaman "Diğer" yerine geçen genel gruptur: gruba atanmamış bilgisayarlar orada durur ve silinemez.</summary>
     static class Gruplar
     {
         public const string Varsayilan = "diger";
-        public static readonly (string Kod, string Ad, Color Renk)[] Liste =
+        public const int EnFazla = 8;
+        static (string Kod, string Ad, Color Renk)[] liste;
+        static readonly (string Kod, string Ad)[] ilk = { ("sinif", "Sınıflar"), ("terapi", "Terapi odaları"), ("ofis", "Ofis"), ("diger", "Diğer") };
+        static readonly Color[] ekRenkler =
         {
-            ("sinif", "Sınıflar", Renk.Mavi),
-            ("terapi", "Terapi odaları", Renk.Yesil),
-            ("ofis", "Ofis", Renk.Turuncu),
-            ("diger", "Diğer", Renk.Yazi3),
+            Renk.Pembe, Color.FromArgb(124, 92, 214), Color.FromArgb(0, 150, 136), Renk.MaviKoyu,
+            Color.FromArgb(214, 96, 64), Renk.YesilKoyu, Color.FromArgb(176, 120, 40), Renk.PembeKoyu,
         };
+        static string Dosya => Path.Combine(Depo.Klasor, "gruplar.txt");
+
+        public static (string Kod, string Ad, Color Renk)[] Liste { get { if (liste == null) liste = Oku(); return liste; } }
+
+        public static Color KodRengi(string kod)
+        {
+            switch (kod)
+            {
+                case "sinif": return Renk.Mavi;
+                case "terapi": return Renk.Yesil;
+                case "ofis": return Renk.Turuncu;
+                case "diger": return Renk.Yazi3;
+            }
+            int n;
+            if (kod != null && kod.StartsWith("g") && int.TryParse(kod.Substring(1), out n) && n > 0) return ekRenkler[(n - 1) % ekRenkler.Length];
+            return Renk.Mavi;
+        }
+
+        static (string Kod, string Ad, Color Renk)[] Oku()
+        {
+            var l = new List<(string, string)>();
+            try
+            {
+                if (File.Exists(Dosya))
+                    foreach (var satir in File.ReadAllLines(Dosya, Encoding.UTF8))
+                    {
+                        var a = satir.Split('\t');
+                        if (a.Length >= 2 && a[0].Trim() != "" && a[1].Trim() != "" && !l.Any(x => x.Item1 == a[0].Trim())) l.Add((a[0].Trim(), a[1].Trim()));
+                    }
+            }
+            catch { }
+            if (l.Count == 0) l.AddRange(ilk);
+            if (!l.Any(x => x.Item1 == Varsayilan)) l.Add((Varsayilan, "Diğer"));
+            // Genel grup her zaman en sonda
+            var genel = l.First(x => x.Item1 == Varsayilan); l.Remove(genel); l.Add(genel);
+            return l.Select(x => (x.Item1, x.Item2, KodRengi(x.Item1))).ToArray();
+        }
+
+        public static void Kaydet(IEnumerable<(string Kod, string Ad)> yeni)
+        {
+            File.WriteAllLines(Dosya, yeni.Select(x => x.Kod + "\t" + x.Ad.Replace("\t", " ").Replace("\n", " ").Trim()), Encoding.UTF8);
+            liste = null;
+        }
+
+        /// <summary>Henüz kullanılmamış yeni bir grup kodu (g1, g2, …).</summary>
+        public static string YeniKod(IEnumerable<string> mevcut)
+        {
+            for (int n = 1; ; n++) if (!mevcut.Contains("g" + n)) return "g" + n;
+        }
+
+        public static string Ikon(string kod) =>
+            kod == "sinif" ? Ik.Mezuniyet : kod == "terapi" ? Ik.Kalp : kod == "ofis" ? Ik.Bina : kod == Varsayilan ? Ik.Daire : Ik.Etiket;
+
         public static int Sira(string kod) { int i = Array.FindIndex(Liste, g => g.Kod == kod); return i < 0 ? Liste.Length - 1 : i; }
         public static string Ad(string kod) => Liste[Sira(kod)].Ad;
         public static Color Renk_(string kod) => Liste[Sira(kod)].Renk;

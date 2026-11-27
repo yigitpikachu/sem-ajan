@@ -360,7 +360,7 @@ namespace Sem.Ajan
                         var uzak = new IPEndPoint(IPAddress.Any, 0);
                         var b = udp.Receive(ref uzak);
                         if (Encoding.UTF8.GetString(b) != Sabitler.KesifSoru) continue;
-                        var cevap = Encoding.UTF8.GetBytes(Kesif.Cevap(Environment.MachineName, ayar.Isim, ayar.Grup, ayar.Yonetici, ayar.Simge));
+                        var cevap = Encoding.UTF8.GetBytes(Kesif.Cevap(Environment.MachineName, ayar.Isim, ayar.Grup, ayar.Yonetici, ayar.Simge, ayar.GrupAd));
                         udp.Send(cevap, cevap.Length, uzak);
                     }
                 }
@@ -429,7 +429,7 @@ namespace Sem.Ajan
                 case "DURUM": return Durum(c);
 
                 case "KIMLIK":
-                    AyarDegistir(a => { a.GorunenAd = m["gorunen"]; a.Grup = m["grup"]; a.Simge = m["simge"]; });
+                    AyarDegistir(a => { a.GorunenAd = m["gorunen"]; a.Grup = m["grup"]; a.Simge = m["simge"]; if (m.Alan.ContainsKey("grup_ad")) a.GrupAd = m["grup_ad"]; });
                     if (ayar.DuvarKip != "") { DuvarGonder(); kilitGunu = DateTime.MinValue; }
                     return Mesaj.Basari("Ad kaydedildi");
 
@@ -445,7 +445,7 @@ namespace Sem.Ajan
                     if (!ayar.EkranIzni) return Mesaj.Hata("Ekran görme kapalı");
                     bool yeni; lock (kilit) { yeni = uzakSon == DateTime.MinValue; uzakSon = DateTime.Now; }
                     if (yeni) EkranaGonder("UZAK", "1");
-                    return EkranResmi(m["genislik"], m["kalite"] != "" ? m["kalite"] : "60", true);
+                    return EkranResmi(m["genislik"], m["kalite"] != "" ? m["kalite"] : "60", true, m["temel"]);
                 }
 
                 case "UZAK_GIRDI":
@@ -660,7 +660,7 @@ namespace Sem.Ajan
             r["otomatik"] = ayar.OtomatikKapanma ? "1" : "0";
             r["oto_guncelle"] = ayar.OtoGuncelle ? "1" : "0";
             r["sabah_saat"] = ayar.SabahSaat; r["sabah_gunler"] = ayar.SabahGunler;
-            r["gorunen"] = ayar.GorunenAd; r["grup"] = ayar.Grup; r["simge"] = ayar.Simge;
+            r["gorunen"] = ayar.GorunenAd; r["grup"] = ayar.Grup; r["grup_ad"] = ayar.GrupAd; r["simge"] = ayar.Simge;
             r["duvar_kip"] = ayar.DuvarKip;
             r["ekran_izni"] = ayar.EkranIzni ? "1" : "0";
             r["saglik"] = Saglik.Ozet();
@@ -672,14 +672,14 @@ namespace Sem.Ajan
         /// <summary>Ekran tarafından ekranın küçük bir JPEG görüntüsünü ister.</summary>
         DateTime uzakSon = DateTime.MinValue;
 
-        Mesaj EkranResmi(string genislik, string kalite, bool imlec)
+        Mesaj EkranResmi(string genislik, string kalite, bool imlec, string temel = "")
         {
             var id = Guid.NewGuid().ToString("N");
             var b = new BekleyenResim();
             lock (bekleyenResim) bekleyenResim[id] = b;
             try
             {
-                if (!EkranaGonder("RESIM", id, genislik, kalite, imlec ? "1" : "0")) return Mesaj.Hata("Ekranda açık oturum yok");
+                if (!(temel == "" ? EkranaGonder("RESIM", id, genislik, kalite, imlec ? "1" : "0") : EkranaGonder("RESIM", id, genislik, kalite, imlec ? "1" : "0", temel))) return Mesaj.Hata("Ekranda açık oturum yok");
                 if (!b.Olay.Wait(6000)) return Mesaj.Hata("Ekran cevap vermedi");
                 if (b.Veri == "") return Mesaj.Hata(b.Hata != "" ? b.Hata : "Ekran görüntüsü alınamadı");
                 var r = Mesaj.Basari(); r.Veri = Convert.FromBase64String(b.Veri);

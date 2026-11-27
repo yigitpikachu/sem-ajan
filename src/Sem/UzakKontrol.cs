@@ -1,6 +1,11 @@
 // Uzaktan kontrol: ekran tarafında fare/klavye olaylarını uygular ve kullanıcıya "bağlı" bandını gösterir.
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Sem.Arayuz;
@@ -100,6 +105,182 @@ namespace Sem.Ajan
             var g = e.Graphics; Tema.Kaliteli(g);
             using (var b = new SolidBrush(Color.FromArgb(52, 199, 89))) g.FillEllipse(b, Tema.S(16), (Height - Tema.S(8)) / 2f, Tema.S(8), Tema.S(8));
             Tema.YaziCiz(g, "Yönetici bu bilgisayara bağlı", Tema.YaziKalin(9f), Color.White, new RectangleF(Tema.S(32), 0, Width - Tema.S(40), Height));
+        }
+    }
+
+    /// <summary>
+    /// Uzaktan kontrolde yalnızca değişen ekran bölgelerini gönderir. Ekran 64 piksellik karelere bölünür,
+    /// önceki kareyle karşılaştırılır; değişen kareler yatay ve dikey birleştirilip ayrı JPEG parçaları olarak paketlenir.
+    /// Paket: "SK" · sürüm(1) · tür (0 aynı, 1 tam, 2 fark) · sıra(int) · genişlik, yükseklik, parça sayısı (short)
+    ///        · her parça için x, y, w, h (short) · uzunluk (int) · JPEG baytları.
+    /// </summary>
+    public class FarkKodlayici
+    {
+        public const int Kare = 64;
+        readonly object kilit = new object();
+        byte[] onceki;
+        int oncekiW, oncekiH, sira;
+        Bitmap ham, kucuk;
+        static readonly ImageCodecInfo jpeg = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
+
+        /// <summary>Ekranı yakalar, küçültür ve paketler. temel: yönetim ekranındaki son karenin sırası (0 = yok).</summary>
+        public byte[] EkranPaketi(int genislik, long kalite, int temel, bool imlec)
+        {
+            lock (kilit)
+            {
+                var b = Screen.PrimaryScreen.Bounds;
+                int w = Math.Max(160, Math.Min(Math.Min(1920, b.Width), genislik));
+                int h = Math.Max(1, (int)Math.Round(b.Height * (double)w / b.Width));
+                if (ham == null || ham.Width != b.Width || ham.Height != b.Height) { ham?.Dispose(); ham = new Bitmap(b.Width, b.Height, PixelFormat.Format24bppRgb); }
+                using (var g = Graphics.FromImage(ham)) { g.CopyFromScreen(b.Location, Point.Empty, b.Size); if (imlec) Girdi.ImlecCiz(g, b); }
+                Bitmap kare = ham;
+                if (w != b.Width)
+                {
+                    if (kucuk == null || kucuk.Width != w || kucuk.Height != h) { kucuk?.Dispose(); kucuk = new Bitmap(w, h, PixelFormat.Format24bppRgb); }
+                    using (var g = Graphics.FromImage(kucuk))
+                    {
+                        // Her karede tüm ekran küçültülür: yüksek kalite yerine hızlı çift doğrusal yeterli.
+                        g.InterpolationMode = InterpolationMode.Bilinear; g.PixelOffsetMode = PixelOffsetMode.Half; g.CompositingMode = CompositingMode.SourceCopy;
+                        g.DrawImage(ham, new Rectangle(0, 0, w, h));
+                    }
+                    kare = kucuk;
+                }
+                return Paketle(kare, kalite, temel);
+            }
+        }
+
+        /// <summary>Verilen kareyi önceki kareyle karşılaştırıp paketler (ekran yakalamadan bağımsız; test edilebilir).</summary>
+        public byte[] Paketle(Bitmap kare, long kalite, int temel)
+        {
+            lock (kilit)
+            {
+                int w = kare.Width, h = kare.Height;
+                var bd = kare.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+                int adim = bd.Stride;
+                byte[] simdi = new byte[adim * h];
+                Marshal.Copy(bd.Scan0, simdi, 0, simdi.Length);
+                kare.UnlockBits(bd);
+
+                bool tam = onceki == null || temel == 0 || temel != sira || oncekiW != w || oncekiH != h;
+                var parcalar = new List<Rectangle>();
+                if (!tam)
+                {
+                    parcalar = Degisenler(onceki, simdi, w, h, adim);
+                    long alan = parcalar.Sum(r => (long)r.Width * r.Height);
+                    if (alan * 100 > (long)w * h * 55) tam = true; // çoğu değiştiyse tek parça daha ucuz
+                }
+                onceki = simdi; oncekiW = w; oncekiH = h;
+                byte tur = tam ? (byte)1 : parcalar.Count == 0 ? (byte)0 : (byte)2;
+                if (tam) parcalar = new List<Rectangle> { new Rectangle(0, 0, w, h) };
+                sira = sira >= int.MaxValue - 1 ? 1 : sira + 1;
+
+                using (var ms = new MemoryStream())
+                using (var bw = new BinaryWriter(ms))
+                {
+                    bw.Write((byte)'S'); bw.Write((byte)'K'); bw.Write((byte)1); bw.Write(tur); bw.Write(sira);
+                    bw.Write((short)w); bw.Write((short)h); bw.Write((short)parcalar.Count);
+                    using (var ep = new EncoderParameters(1))
+                    {
+                        ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, Math.Max(30L, Math.Min(90L, kalite)));
+                        foreach (var r in parcalar)
+                        {
+                            byte[] jb;
+                            using (var js = new MemoryStream())
+                            {
+                                if (r.Width == w && r.Height == h) kare.Save(js, jpeg, ep);
+                                else using (var p = kare.Clone(r, PixelFormat.Format24bppRgb)) p.Save(js, jpeg, ep);
+                                jb = js.ToArray();
+                            }
+                            bw.Write((short)r.X); bw.Write((short)r.Y); bw.Write((short)r.Width); bw.Write((short)r.Height);
+                            bw.Write(jb.Length); bw.Write(jb);
+                        }
+                    }
+                    bw.Flush();
+                    return ms.ToArray();
+                }
+            }
+        }
+
+        public void Sifirla() { lock (kilit) { onceki = null; sira = 0; ham?.Dispose(); ham = null; kucuk?.Dispose(); kucuk = null; } }
+
+        /// <summary>Değişen 64x64 kareleri bulur, yatayda şeritlere, dikeyde aynı genişlikteki şeritlerle birleştirir.</summary>
+        static List<Rectangle> Degisenler(byte[] a, byte[] b, int w, int h, int adim)
+        {
+            int kx = (w + Kare - 1) / Kare, ky = (h + Kare - 1) / Kare;
+            var kirli = new bool[kx * ky];
+            for (int ty = 0; ty < ky; ty++)
+            {
+                int y0 = ty * Kare, y1 = Math.Min(h, y0 + Kare);
+                for (int tx = 0; tx < kx; tx++)
+                {
+                    int bas = tx * Kare * 3, son = Math.Min(w, (tx + 1) * Kare) * 3;
+                    for (int y = y0; y < y1 && !kirli[ty * kx + tx]; y++)
+                    {
+                        int o = y * adim + bas, bitis = y * adim + son, i = o;
+                        for (; i + 8 <= bitis; i += 8) if (BitConverter.ToInt64(a, i) != BitConverter.ToInt64(b, i)) { kirli[ty * kx + tx] = true; break; }
+                        if (!kirli[ty * kx + tx]) for (; i < bitis; i++) if (a[i] != b[i]) { kirli[ty * kx + tx] = true; break; }
+                    }
+                }
+            }
+            var sonuc = new List<Rectangle>();
+            var acik = new List<Rectangle>(); // bir önceki satırdan uzatılabilecek şeritler
+            for (int ty = 0; ty < ky; ty++)
+            {
+                var yeniAcik = new List<Rectangle>();
+                int tx = 0;
+                while (tx < kx)
+                {
+                    if (!kirli[ty * kx + tx]) { tx++; continue; }
+                    int bas = tx; while (tx < kx && kirli[ty * kx + tx]) tx++;
+                    int x = bas * Kare, xw = Math.Min(w, tx * Kare) - x, y = ty * Kare, yh = Math.Min(h, y + Kare) - y;
+                    int j = acik.FindIndex(r => r.X == x && r.Width == xw && r.Bottom == y);
+                    if (j >= 0) { var r = acik[j]; acik.RemoveAt(j); yeniAcik.Add(new Rectangle(r.X, r.Y, r.Width, r.Height + yh)); }
+                    else yeniAcik.Add(new Rectangle(x, y, xw, yh));
+                }
+                sonuc.AddRange(acik); // uzatılamayanlar kapandı
+                acik = yeniAcik;
+            }
+            sonuc.AddRange(acik);
+            return sonuc;
+        }
+    }
+
+    /// <summary>Yönetim ekranı tarafı: paketi çözer, parçaları elindeki görüntünün üstüne çizer.</summary>
+    public static class FarkCozucu
+    {
+        public class Sonuc { public int Tur, Sira, W, H; public List<(Rectangle Alan, Image Resim)> Parcalar = new List<(Rectangle, Image)>(); }
+
+        public static bool PaketMi(byte[] v) => v != null && v.Length >= 14 && v[0] == (byte)'S' && v[1] == (byte)'K';
+
+        public static Sonuc Coz(byte[] v)
+        {
+            var s = new Sonuc();
+            using (var br = new BinaryReader(new MemoryStream(v)))
+            {
+                br.ReadBytes(3); s.Tur = br.ReadByte(); s.Sira = br.ReadInt32();
+                s.W = br.ReadInt16(); s.H = br.ReadInt16(); int n = br.ReadInt16();
+                for (int i = 0; i < n; i++)
+                {
+                    var r = new Rectangle(br.ReadInt16(), br.ReadInt16(), br.ReadInt16(), br.ReadInt16());
+                    var jb = br.ReadBytes(br.ReadInt32());
+                    s.Parcalar.Add((r, Image.FromStream(new MemoryStream(jb))));
+                }
+            }
+            return s;
+        }
+
+        /// <summary>Parçaları tuvale uygular; tam karede yeni tuval döner. Tuval yoksa ya da boyut uymuyorsa null döner (tam kare istenmeli).</summary>
+        public static Bitmap Uygula(Bitmap tuval, Sonuc s)
+        {
+            if (s.Tur == 1)
+            {
+                var yeni = new Bitmap(s.W, s.H, PixelFormat.Format32bppPArgb);
+                using (var g = Graphics.FromImage(yeni)) { g.InterpolationMode = InterpolationMode.NearestNeighbor; foreach (var p in s.Parcalar) g.DrawImage(p.Resim, p.Alan); }
+                return yeni;
+            }
+            if (tuval == null || tuval.Width != s.W || tuval.Height != s.H) return null;
+            using (var g = Graphics.FromImage(tuval)) { g.InterpolationMode = InterpolationMode.NearestNeighbor; foreach (var p in s.Parcalar) g.DrawImage(p.Resim, p.Alan); }
+            return tuval;
         }
     }
 }

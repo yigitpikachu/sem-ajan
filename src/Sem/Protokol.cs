@@ -197,7 +197,7 @@ namespace Sem.Ortak
     /// <summary>Ağdaki Sem bilgisayarları (UDP keşif cevabı).</summary>
     public class KesifSonucu
     {
-        public string Ip = "", Ad = "", Surum = "", Isim = "", Grup = "", Simge = "";
+        public string Ip = "", Ad = "", Surum = "", Isim = "", Grup = "", Simge = "", GrupAd = "";
         public bool Yonetici;
         public string Baslik => Isim != "" ? Isim : Ad;
     }
@@ -225,7 +225,7 @@ namespace Sem.Ortak
                         if (p.Length < 2 || p[0] != Sabitler.KesifCevap) continue;
                         var ip = uzak.Address.IsIPv4MappedToIPv6 ? uzak.Address.MapToIPv4() : uzak.Address;
                         Func<int, string> a = i => p.Length > i ? p[i] : "";
-                        sonuc[ip.ToString()] = new KesifSonucu { Ip = ip.ToString(), Ad = a(1), Surum = a(2), Isim = a(3), Grup = a(4), Yonetici = a(5) == "1", Simge = a(6) };
+                        sonuc[ip.ToString()] = new KesifSonucu { Ip = ip.ToString(), Ad = a(1), Surum = a(2), Isim = a(3), Grup = a(4), Yonetici = a(5) == "1", Simge = a(6), GrupAd = a(7) };
                     }
                     catch (SocketException) { break; }
                 }
@@ -233,8 +233,8 @@ namespace Sem.Ortak
             return sonuc.Values.ToList();
         }
 
-        public static string Cevap(string ad, string isim, string grup, bool yonetici, string simge) =>
-            string.Join("|", Sabitler.KesifCevap, ad, Sabitler.Surum, (isim ?? "").Replace("|", " "), grup ?? "", yonetici ? "1" : "0", simge ?? "");
+        public static string Cevap(string ad, string isim, string grup, bool yonetici, string simge, string grupAd = "") =>
+            string.Join("|", Sabitler.KesifCevap, ad, Sabitler.Surum, (isim ?? "").Replace("|", " "), grup ?? "", yonetici ? "1" : "0", simge ?? "", (grupAd ?? "").Replace("|", " "));
     }
 
     /// <summary>Wake-on-LAN: kapalı bilgisayarı ağdan açma sinyali.</summary>

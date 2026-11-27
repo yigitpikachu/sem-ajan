@@ -649,6 +649,82 @@ namespace Sem.Yonetici
         }
     }
 
+    /// <summary>Grup adlarını değiştirme, grup ekleme ve silme.</summary>
+    class GruplarForm : ModernForm
+    {
+        class Satir { public string Kod; public Giris Ad; public Control Nokta; public Buton Sil; }
+        readonly List<Satir> satirlar = new List<Satir>();
+        readonly Buton ekle;
+        readonly Label aciklama;
+        const int Ust = 44, SatirH = 46;
+
+        public List<(string Kod, string Ad)> Sonuc =>
+            satirlar.Select(x => (x.Kod, x.Ad.Text.Trim() != "" ? x.Ad.Text.Trim() : Gruplar.Ad(x.Kod))).ToList();
+
+        public GruplarForm() : base("Grupları düzenle", 460, 400)
+        {
+            SabitBoyut = true;
+            aciklama = Yazi.Etiket("Adları değiştirin, yeni grup ekleyin. Silinen gruptaki bilgisayarlar en alttaki gruba geçer.", 9.5f, false, Renk.Yazi2, false);
+            aciklama.SetBounds(0, 0, Icerik.Width, Tema.S(38));
+            Icerik.Controls.Add(aciklama);
+            foreach (var g in Gruplar.Liste) SatirEkle(g.Kod, g.Ad);
+            ekle = new Buton("Grup ekle", Ik.Ekle, ButonTuru.Sade);
+            ekle.Click += (s, e) =>
+            {
+                var sat = SatirEkle(Gruplar.YeniKod(satirlar.Select(x => x.Kod)), "");
+                // Yeni grup genel grubun üstüne girsin
+                satirlar.Remove(sat); satirlar.Insert(satirlar.Count - 1, sat);
+                Yerlesim(); sat.Ad.Focus();
+            };
+            Icerik.Controls.Add(ekle);
+            var ok = Diyalog.AltDugmeler(this, "Kaydet", ButonTuru.Birincil, Ik.Tik);
+            ok.Click += (s, e) => { DialogResult = DialogResult.OK; Close(); };
+            Yerlesim();
+        }
+
+        Satir SatirEkle(string kod, string ad)
+        {
+            int g = Icerik.Width;
+            var renk = Gruplar.KodRengi(kod);
+            var sat = new Satir { Kod = kod };
+            sat.Nokta = new Panel { Size = Tema.S(14, 14), BackColor = Renk.Zemin };
+            sat.Nokta.Paint += (s, e) => { Tema.Kaliteli(e.Graphics); using (var b = new SolidBrush(renk)) e.Graphics.FillEllipse(b, Tema.S(1), Tema.S(1), Tema.S(11), Tema.S(11)); };
+            sat.Ad = new Giris { Text = ad, Width = g - Tema.S(76), Ipucu = "Grup adı, ör. Öğretmenler odası" };
+            sat.Ad.Kutu.MaxLength = 30;
+            sat.Sil = new Buton("", Ik.Sil, ButonTuru.Sade) { Size = Tema.S(38, 38), ForeColorOzel = Renk.Pembe, TabStop = false };
+            if (kod == Gruplar.Varsayilan) { sat.Sil.Visible = false; new ToolTip().SetToolTip(sat.Ad.Kutu, "Gruba atanmamış bilgisayarlar burada durur."); }
+            else new ToolTip().SetToolTip(sat.Sil, "Grubu sil");
+            sat.Sil.Click += (s, e) =>
+            {
+                satirlar.Remove(sat);
+                Icerik.Controls.Remove(sat.Nokta); Icerik.Controls.Remove(sat.Ad); Icerik.Controls.Remove(sat.Sil);
+                sat.Nokta.Dispose(); sat.Ad.Dispose(); sat.Sil.Dispose();
+                Yerlesim();
+            };
+            Icerik.Controls.AddRange(new[] { sat.Nokta, (Control)sat.Ad, sat.Sil });
+            satirlar.Add(sat);
+            return sat;
+        }
+
+        void Yerlesim()
+        {
+            int y = Tema.S(Ust);
+            foreach (var x in satirlar)
+            {
+                x.Nokta.Location = new Point(Tema.S(2), y + (x.Ad.Height - x.Nokta.Height) / 2);
+                x.Ad.Location = new Point(Tema.S(26), y);
+                x.Sil.Location = new Point(Icerik.Width - x.Sil.Width, y + (x.Ad.Height - x.Sil.Height) / 2);
+                y += Tema.S(SatirH);
+            }
+            ekle.Visible = satirlar.Count < Gruplar.EnFazla;
+            ekle.Location = new Point(Tema.S(16), y);
+            int icerikAlt = y + (ekle.Visible ? ekle.Height : 0);
+            // Pencere satır sayısına göre uzayıp kısalır; alttaki düğmeler sabit kalır.
+            int dugmeH = Tema.S(44) + Tema.S(24);
+            ClientSize = new Size(ClientSize.Width, Icerik.Top + icerikAlt + dugmeH + Tema.S(20));
+        }
+    }
+
     /// <summary>Özellikleri aç/kapa ve sabah açılma saati.</summary>
     class AyarlarForm : ModernForm
     {

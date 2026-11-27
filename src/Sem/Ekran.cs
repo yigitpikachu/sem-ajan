@@ -185,12 +185,22 @@ namespace Sem.Ajan
         }
 
         /// <summary>Ekranın küçültülmüş JPEG görüntüsünü hizmete gönderir (yönetim ekranındaki önizleme için).</summary>
+        readonly FarkKodlayici fark = new FarkKodlayici();
+
         void ResimGonder(string[] p)
         {
             string id = p.Length > 1 ? p[1] : "";
             try
             {
                 int w; if (p.Length < 3 || !int.TryParse(p[2], out w)) w = 480;
+                // Uzaktan kontrol: yalnızca değişen bölgeler gönderilir (6. alan = yönetim ekranındaki son kare sırası).
+                int temel;
+                if (p.Length > 5 && int.TryParse(p[5], out temel))
+                {
+                    long k = 60; if (p.Length > 3) long.TryParse(p[3], out k);
+                    Gonder("RESIM", id, Convert.ToBase64String(fark.EkranPaketi(w, k, temel, p.Length > 4 && p[4] == "1")), "");
+                    return;
+                }
                 var b = Screen.PrimaryScreen.Bounds;
                 w = Math.Max(160, Math.Min(Math.Min(1920, b.Width), w));
                 int h = Math.Max(1, (int)Math.Round(b.Height * (double)w / b.Width));

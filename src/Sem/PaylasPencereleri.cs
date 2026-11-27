@@ -401,7 +401,7 @@ namespace Sem.Ajan
                 case "CIHAZ":
                 {
                     if (kartlar.ContainsKey(a[1])) break;
-                    var k = new CihazKarti(a[1], a[2], a[3], a[4], a[5]);
+                    var k = new CihazKarti(a[1], a[2], a[3], a[4], a[5], a.Length > 6 ? a[6] : "");
                     k.Click += (s, e) => { if (bekleyen == 0) { k.Secili = !k.Secili; Guncelle(); } };
                     kartlar[a[1]] = k; liste.Controls.Add(k);
                     break;
@@ -523,7 +523,7 @@ namespace Sem.Ajan
             bool uzerinde;
             readonly Color renk;
 
-            public CihazKarti(string id, string ad, string grupYaModel, string simge, string tur)
+            public CihazKarti(string id, string ad, string grupYaModel, string simge, string tur, string grupAd = "")
             {
                 Id = id; Ad = ad; Tur = tur;
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
@@ -533,8 +533,8 @@ namespace Sem.Ajan
                 else
                 {
                     Simge = simge != "" ? simge : Ik.Masaustu;
-                    Alt = tur == "yonetici" ? "Yönetici" : Yonetici.Gruplar.Ad(grupYaModel == "" ? Yonetici.Gruplar.Varsayilan : grupYaModel);
-                    renk = grupYaModel == "" ? Renk.Mavi : Yonetici.Gruplar.Renk_(grupYaModel);
+                    Alt = tur == "yonetici" ? "Yönetici" : grupAd != "" ? grupAd : Yonetici.Gruplar.Ad(grupYaModel == "" ? Yonetici.Gruplar.Varsayilan : grupYaModel);
+                    renk = grupYaModel == "" ? Renk.Mavi : Yonetici.Gruplar.KodRengi(grupYaModel);
                     if (renk == Renk.Yazi3) renk = Renk.Mavi;
                 }
             }

@@ -23,7 +23,8 @@ namespace Sem.Yonetici
         readonly Panel ust;
         readonly Label baslik, bilgi;
         readonly Buton kaliteBtn;
-        volatile bool kapali, net;
+        volatile bool kapali, net, kucuk_;
+        volatile int gorGenislik = 1366;
         readonly object kuyrukKilit = new object();
         readonly List<string> kuyruk = new List<string>();
         readonly AutoResetEvent girdiVar = new AutoResetEvent(false);
@@ -58,6 +59,8 @@ namespace Sem.Yonetici
             gor = new Gorunum { Dock = DockStyle.Fill };
             Controls.Add(gor); Controls.Add(ust);
             gor.Olay += Ekle;
+            gor.Resize += (s, a) => gorGenislik = gor.Width;
+            Resize += (s, a) => kucuk_ = WindowState == FormWindowState.Minimized;
 
             Shown += (s, a) => { gor.Focus(); new Thread(KareDongu) { IsBackground = true }.Start(); new Thread(GirdiDongu) { IsBackground = true }.Start(); };
             FormClosed += (s, a) =>
@@ -102,34 +105,68 @@ namespace Sem.Yonetici
 
         void KareDongu()
         {
-            int hata = 0; var sayac = System.Diagnostics.Stopwatch.StartNew(); int kare = 0;
+            int hata = 0; var sayac = System.Diagnostics.Stopwatch.StartNew(); int kare = 0; long bayt = 0;
             var adim = System.Diagnostics.Stopwatch.StartNew();
+            int temel = 0; // elimizdeki son karenin sırası; 0 ise tam kare istenir
             while (!kapali)
             {
-                // Kaynak tasarrufu: saniyede en çok 8 kare (net kipte 5); pencere küçültülmüşse saniyede 1.
-                bool kucuk = false; try { Invoke((Action)(() => kucuk = WindowState == FormWindowState.Minimized)); } catch { return; }
-                int bekle = (kucuk ? 1000 : net ? 200 : 125) - (int)adim.ElapsedMilliseconds;
+                // Yalnızca değişen bölgeler geldiği için saniyede 20 kareye (net kipte 15) kadar çıkılır;
+                // pencere küçültülmüşse saniyede 1 kez bağlantı tazelenir.
+                bool kucuk = kucuk_;
+                int bekle = (kucuk ? 1000 : net ? 66 : 50) - (int)adim.ElapsedMilliseconds;
                 if (bekle > 0) Thread.Sleep(bekle);
                 adim.Restart();
-                if (kucuk) { try { Baglanti.Gonder(pc.Ip, new Mesaj("UZAK_GIRDI"), 2000); } catch { } continue; } // bağlantı bandı açık kalsın
+                if (kucuk) { temel = 0; try { Baglanti.Gonder(pc.Ip, new Mesaj("UZAK_GIRDI"), 2000); } catch { } continue; } // bağlantı bandı açık kalsın
                 try
                 {
-                    int w = 0; try { Invoke((Action)(() => w = gor.Width)); } catch { return; }
                     var m = new Mesaj("UZAK_KARE");
-                    m["genislik"] = Math.Max(640, Math.Min(net ? 1920 : 1366, w)).ToString();
+                    m["genislik"] = Math.Max(640, Math.Min(net ? 1920 : 1366, gorGenislik)).ToString();
                     m["kalite"] = net ? "80" : "55";
+                    m["temel"] = temel.ToString();
                     var c = Baglanti.Gonder(pc.Ip, m, 8000);
-                    if (!c.Tamam) { Durum(c["aciklama"]); Thread.Sleep(1500); continue; }
-                    var img = Image.FromStream(new MemoryStream(c.Veri));
-                    hata = 0; kare++;
-                    BeginInvoke((Action)(() =>
+                    if (!c.Tamam) { Durum(c["aciklama"]); temel = 0; Thread.Sleep(1500); continue; }
+                    hata = 0; kare++; bayt += c.Veri.Length;
+                    if (Ajan.FarkCozucu.PaketMi(c.Veri))
                     {
-                        if (kapali) { img.Dispose(); return; }
-                        var eski = gor.Resim; gor.Resim = img; eski?.Dispose(); gor.Invalidate();
-                    }));
-                    if (sayac.ElapsedMilliseconds > 2000) { Durum("bağlı  ·  " + (kare * 1000 / sayac.ElapsedMilliseconds) + " kare/sn"); kare = 0; sayac.Restart(); }
+                        var f = Ajan.FarkCozucu.Coz(c.Veri);
+                        temel = f.Sira;
+                        if (f.Tur != 0)
+                        {
+                            var bitti = new ManualResetEventSlim();
+                            BeginInvoke((Action)(() =>
+                            {
+                                try
+                                {
+                                    if (kapali) return;
+                                    var eski = gor.Resim as Bitmap;
+                                    var yeni = Ajan.FarkCozucu.Uygula(eski, f);
+                                    if (yeni == null) { temel = 0; return; } // elimizdeki görüntü uymuyor: tam kare iste
+                                    if (yeni != eski) { gor.Resim = yeni; eski?.Dispose(); gor.Invalidate(); }
+                                    else foreach (var p in f.Parcalar) gor.AlaniYenile(p.Alan);
+                                }
+                                finally { foreach (var p in f.Parcalar) p.Resim.Dispose(); bitti.Set(); }
+                            }));
+                            bitti.Wait(2000); // sıradaki istek uygulanmış kareye göre gitsin
+                        }
+                    }
+                    else
+                    {
+                        // Eski sürüm (1.5.1 ve öncesi): her seferinde tam JPEG gelir
+                        temel = 0;
+                        var img = Image.FromStream(new MemoryStream(c.Veri));
+                        BeginInvoke((Action)(() =>
+                        {
+                            if (kapali) { img.Dispose(); return; }
+                            var eski = gor.Resim; gor.Resim = img; eski?.Dispose(); gor.Invalidate();
+                        }));
+                    }
+                    if (sayac.ElapsedMilliseconds > 2000)
+                    {
+                        Durum("bağlı  ·  " + (kare * 1000 / sayac.ElapsedMilliseconds) + " kare/sn  ·  " + (bayt * 8 / 1000 / sayac.ElapsedMilliseconds) + " Mbit/sn");
+                        kare = 0; bayt = 0; sayac.Restart();
+                    }
                 }
-                catch (Exception e) { if (++hata > 2) Durum("Bağlantı sorunu: " + e.Message); Thread.Sleep(1000); }
+                catch (Exception e) { temel = 0; if (++hata > 2) Durum("Bağlantı sorunu: " + e.Message); Thread.Sleep(1000); }
             }
         }
 
@@ -148,6 +185,14 @@ namespace Sem.Yonetici
             }
 
             protected override bool IsInputKey(Keys keyData) => true;
+
+            /// <summary>Görüntünün değişen bölgesini ekranda yeniden çizer.</summary>
+            public void AlaniYenile(Rectangle r)
+            {
+                var a = Alan(); if (a.Width <= 0) return;
+                float o = a.Width / Resim.Width;
+                Invalidate(Rectangle.Inflate(Rectangle.Round(new RectangleF(a.X + r.X * o, a.Y + r.Y * o, r.Width * o, r.Height * o)), 2, 2));
+            }
 
             RectangleF Alan()
             {

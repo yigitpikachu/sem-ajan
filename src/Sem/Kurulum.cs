@@ -289,7 +289,7 @@ namespace Sem
 
             Calis(() => Kurulum.Kur(sifre1.Text, yonetici.Acik),
                   "Kurulum tamamlandı",
-                  "Sem Ajan bu bilgisayarda arka planda çalışıyor. Bu pencereyi kapatıp USB belleği çıkarabilirsiniz." +
+                  "Sem Ajan bu bilgisayarda arka planda çalışıyor. Bu pencereyi kapatabilirsiniz." +
                   (yonetici.Acik ? "\n\nYönetim ekranını masaüstündeki \"Sem Ajan\" kısayolundan açabilirsiniz." : ""));
         }
 

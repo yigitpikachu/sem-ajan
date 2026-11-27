@@ -444,6 +444,7 @@ namespace Sem.Yonetici
                 m.Ekle("Adı ve grubu düzenle", Ik.Duzenle, () => Guvenli(() => Duzenle(secili[0]))).Ayrac();
             }
             else if (secili.Count > 1) m.Ekle("Grubunu değiştir", Ik.Etiket, () => Guvenli(GrupDegistir)).Ayrac();
+            m.Ekle("Grupları düzenle", Ik.Etiket, () => Guvenli(GruplariDuzenle)).Ayrac();
             m.Ekle("Bugün kapanmasın", Ik.Duraklat, () => Guvenli(BugunKapatma))
              .Ekle("Kapanma saatleri", Ik.Takvim, () => Guvenli(KapanmaSaatleri));
             if (ayarlar.Duvar) m.Ekle("Duvar kâğıdı", Ik.Resim, () => Guvenli(DuvarKagidi));
@@ -514,9 +515,9 @@ namespace Sem.Yonetici
                             }
                             if (DuyuruGecmisi.OkunanlariIsle(p.Ad, d["okunan"])) duyuruDegisti = true;
                             // Verilen ad, grup ve simge bilgisayara da yazılsın (paylaşımda ve duvar kâğıdında görünür).
-                            if (d.Alan.ContainsKey("gorunen") && (d["gorunen"] != p.GorunenAd || d["grup"] != p.Grup || d["simge"] != p.Simge))
+                            if (d.Alan.ContainsKey("gorunen") && (d["gorunen"] != p.GorunenAd || d["grup"] != p.Grup || d["simge"] != p.Simge || (d.Alan.ContainsKey("grup_ad") && d["grup_ad"] != Gruplar.Ad(p.Grup))))
                             {
-                                var km = new Mesaj("KIMLIK"); km["gorunen"] = p.GorunenAd; km["grup"] = p.Grup; km["simge"] = p.Simge;
+                                var km = new Mesaj("KIMLIK"); km["gorunen"] = p.GorunenAd; km["grup"] = p.Grup; km["grup_ad"] = Gruplar.Ad(p.Grup); km["simge"] = p.Simge;
                                 try { Baglanti.Gonder(p.Ip, km, 3000); } catch { }
                             }
                             // Ekran görme anahtarı (Ayarlar) tüm bilgisayarlara uygulanır; kapalıyken bilgisayar da reddeder.
@@ -1146,10 +1147,27 @@ namespace Sem.Yonetici
         {
             var h = Hedefler(false); if (h == null) return;
             int s = MK.Secim(this, "Grubunu değiştir", h.Count + " bilgisayar hangi gruba girsin?",
-                Gruplar.Liste.Select(g => (g.Ad, "", g.Kod == "sinif" ? Ik.Mezuniyet : g.Kod == "terapi" ? Ik.Kalp : g.Kod == "ofis" ? Ik.Bina : Ik.Daire)).ToArray());
+                Gruplar.Liste.Select(g => (g.Ad, "", Gruplar.Ikon(g.Kod))).ToArray());
             if (s < 0) return;
             lock (pcKilit) { foreach (var p in h) p.Grup = Gruplar.Liste[s].Kod; Depo.ListeYaz(pcler); }
             ListeyiCiz();
+        }
+
+        void GruplariDuzenle()
+        {
+            using (var f = new GruplarForm())
+            {
+                if (f.ShowDialog(this) != DialogResult.OK) return;
+                Gruplar.Kaydet(f.Sonuc);
+                // Silinen gruptaki bilgisayarlar genel gruba geçer
+                lock (pcKilit)
+                {
+                    foreach (var p in pcler) if (!Gruplar.Liste.Any(g => g.Kod == p.Grup)) p.Grup = Gruplar.Varsayilan;
+                    Depo.ListeYaz(pcler);
+                }
+                ListeyiCiz();
+                Tost("Gruplar kaydedildi.");
+            }
         }
 
         Pc BuPc() { lock (pcKilit) return pcler.FirstOrDefault(p => p.Ad.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)); }

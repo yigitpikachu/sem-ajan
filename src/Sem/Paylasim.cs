@@ -661,7 +661,7 @@ namespace Sem.Ajan
             try { sem = Kesif.Sor(1500); } catch { }
             gonder(new[] { "AYAR", Ayar.Paylasim ? "1" : "0", Ayar.Yonetici ? "1" : "0" });
             foreach (var k in sem.Where(k => !k.Ad.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)).OrderBy(k => k.Grup).ThenBy(k => k.Baslik))
-                gonder(new[] { "CIHAZ", "sem:" + k.Ip, k.Baslik, k.Grup, k.Simge, k.Yonetici ? "yonetici" : "pc" });
+                gonder(new[] { "CIHAZ", "sem:" + k.Ip, k.Baslik, k.Grup, k.Simge, k.Yonetici ? "yonetici" : "pc", k.GrupAd });
             lock (cihazlar)
                 foreach (var c in cihazlar.Values.Where(c => (DateTime.Now - c.Goruldu).TotalMinutes < 10).OrderBy(c => c.Ad))
                     gonder(new[] { "CIHAZ", "ls:" + c.Parmak, c.Ad, c.Model, "", c.Tur == "mobile" ? "telefon" : "diger" });

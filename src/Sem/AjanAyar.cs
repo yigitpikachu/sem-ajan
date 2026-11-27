@@ -40,7 +40,7 @@ namespace Sem.Ajan
 
         // Paylaşım (1.4)
         public bool Yonetici;               // kurulumda "Yönetici bilgisayarı" seçildi mi
-        public string GorunenAd = "", Grup = "", Simge = ""; // yönetim ekranında verilen ad (paylaşımda görünür)
+        public string GorunenAd = "", Grup = "", Simge = "", GrupAd = ""; // yönetim ekranında verilen ad (paylaşımda görünür)
         public bool Paylasim = true;        // bilgisayarlar arası ve telefon paylaşımı
         public bool Telefon = true;         // LocalSend ile telefonlardan dosya kabul et
         public bool EkranIzni = true;       // yönetici ekranı görebilir / uzaktan kontrol edebilir
@@ -79,6 +79,7 @@ namespace Sem.Ajan
             if (d.TryGetValue("yonetici", out v)) a.Yonetici = v == "1"; else a.Yonetici = !a.OtomatikKapanma;
             if (d.TryGetValue("gorunen_ad", out v)) a.GorunenAd = v;
             if (d.TryGetValue("grup", out v)) a.Grup = v;
+            if (d.TryGetValue("grup_ad", out v)) a.GrupAd = v;
             if (d.TryGetValue("simge", out v)) a.Simge = v;
             if (d.TryGetValue("paylasim", out v)) a.Paylasim = v != "0";
             if (d.TryGetValue("telefon", out v)) a.Telefon = v != "0";
@@ -112,6 +113,7 @@ namespace Sem.Ajan
             sb.AppendLine("yonetici=" + (Yonetici ? "1" : "0"));
             sb.AppendLine("gorunen_ad=" + Tek(GorunenAd));
             sb.AppendLine("grup=" + Tek(Grup));
+            sb.AppendLine("grup_ad=" + Tek(GrupAd));
             sb.AppendLine("simge=" + Tek(Simge));
             sb.AppendLine("paylasim=" + (Paylasim ? "1" : "0"));
             sb.AppendLine("telefon=" + (Telefon ? "1" : "0"));
