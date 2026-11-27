@@ -883,9 +883,9 @@ namespace Sem.Yonetici
     {
         public readonly YonetimAyar Ayar;
         public bool Paylasim, Telefon;
-        readonly Anahtar onizleme, dosya, yazici, program, duvar, duyuru, paylasim, telefon;
+        readonly Anahtar onizleme, dosya, yazici, program, duvar, duyuru, paylasim, telefon, yanit, klasik;
 
-        public AyarlarForm(YonetimAyar mevcut, bool paylasimAcik, bool telefonAcik, Action acKapAc) : base("Ayarlar", 520, 760)
+        public AyarlarForm(YonetimAyar mevcut, bool paylasimAcik, bool telefonAcik, Action acKapAc) : base("Ayarlar", 520, 900)
         {
             int g = Icerik.Width;
             Ayar = mevcut;
@@ -929,6 +929,14 @@ namespace Sem.Yonetici
             var pnot = Yazi.Etiket("Telefondaki LocalSend uygulaması bilgisayarları adlarıyla görür. Bu bilgisayar telefonlarda \"Müdür\" olarak görünür: gelen dosya için Kaydet, Yazdır ya da Reddet sorulur.", 9f, false, Renk.Yazi2, false);
             pnot.SetBounds(0, y, g, Tema.S(52));
             Icerik.Controls.Add(pnot);
+            y += Tema.S(56);
+            yanit = new Anahtar("Gelen mesaja yanıt verilebilsin", "") { Location = new Point(0, y), Width = g, Acik = mevcut.MesajYanit };
+            Icerik.Controls.Add(yanit); y += Tema.S(36);
+            klasik = new Anahtar("Klasik sağ tık menüsü (Windows 11)", "") { Location = new Point(0, y), Width = g, Acik = mevcut.KlasikMenu };
+            Icerik.Controls.Add(klasik); y += Tema.S(40);
+            var knot = Yazi.Etiket("Windows 11'de \"Sem ile gönder\" dahil tüm seçenekler doğrudan görünür; bir sonraki oturum açılışında etkinleşir. Windows 10'a dokunulmaz.", 9f, false, Renk.Yazi2, false);
+            knot.SetBounds(0, y, g, Tema.S(52));
+            Icerik.Controls.Add(knot);
             paylasim.Degisti += (s, e) => { telefon.Enabled = paylasim.Acik; telefon.Invalidate(); };
             telefon.Enabled = paylasim.Acik;
 
@@ -937,6 +945,7 @@ namespace Sem.Yonetici
             {
                 Ayar.Onizleme = onizleme.Acik; Ayar.Dosya = dosya.Acik; Ayar.Yazici = yazici.Acik; Ayar.Program = program.Acik;
                 Ayar.Duvar = duvar.Acik; Ayar.Duyurular = duyuru.Acik;
+                Ayar.MesajYanit = yanit.Acik; Ayar.KlasikMenu = klasik.Acik;
                 Paylasim = paylasim.Acik; Telefon = telefon.Acik;
                 DialogResult = DialogResult.OK; Close();
             };

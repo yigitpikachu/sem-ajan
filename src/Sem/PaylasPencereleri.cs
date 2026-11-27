@@ -120,7 +120,10 @@ namespace Sem.Ajan
     /// <summary>Gelen yazı mesajı: kopyalanabilir.</summary>
     class MetinKarti : KoseKarti
     {
-        public MetinKarti(string kimden, string metin) : base(400, 36 + 52 + 18 * Satir(metin) + 14 + 36)
+        PaylasKanali kanal;
+        bool yanitAcik, gidiyor;
+
+        public MetinKarti(string kimden, string metin, string hedef = "", bool yanitIzni = false) : base(400, 36 + 52 + 18 * Satir(metin) + 14 + 36)
         {
             Baslik(kimden, "Mesaj");
             var kutu = new TextBox
@@ -129,16 +132,81 @@ namespace Sem.Ajan
                 BackColor = Renk.Yuzey, ForeColor = Renk.Yazi, Font = Tema.Yazi(10f), ScrollBars = Satir(metin) >= 8 ? ScrollBars.Vertical : ScrollBars.None,
             };
             kutu.SetBounds(0, Tema.S(52), Icerik.Width, Icerik.Height - Tema.S(52 + 48));
-            var kopyala = new Buton("Kopyala", Ik.Kopyala, ButonTuru.Birincil) { Height = Tema.S(36) };
-            var kapat = new Buton("Kapat", "", ButonTuru.Ikincil) { Height = Tema.S(36) };
-            kopyala.BoyutAyarla(); kapat.BoyutAyarla();
-            kopyala.Location = new Point(Icerik.Width - kopyala.Width, Icerik.Height - Tema.S(36));
-            kapat.Location = new Point(kopyala.Left - kapat.Width - Tema.S(8), kopyala.Top);
-            kopyala.Click += (s, e) => { try { Clipboard.SetText(metin); kopyala.Text = "Kopyalandı"; kopyala.Ikon = Ik.TikDaire; kopyala.BoyutAyarla(); kopyala.Left = Icerik.Width - kopyala.Width; } catch { } };
+            bool yanitVar = yanitIzni && hedef != "";
+            var kopyala = new Buton("Kopyala", Ik.Kopyala, yanitVar ? ButonTuru.Ikincil : ButonTuru.Birincil) { Height = Tema.S(36), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var kapat = new Buton("Kapat", "", ButonTuru.Ikincil) { Height = Tema.S(36), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var yanitla = new Buton("Yanıtla", Ik.Sohbet, ButonTuru.Birincil) { Height = Tema.S(36), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Visible = yanitVar };
+            var giris = new Giris(false) { Ipucu = "Yanıtınızı yazın", Visible = false, Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            var durum = new Label { AutoSize = false, Font = Tema.Yazi(9f), ForeColor = Renk.Yazi3, BackColor = Renk.Yuzey, TextAlign = ContentAlignment.MiddleLeft, Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Visible = false };
+
+            Action diz = () =>
+            {
+                foreach (var b in new[] { kopyala, kapat, yanitla }) b.BoyutAyarla();
+                int x = Icerik.Width, y = Icerik.Height - Tema.S(36);
+                if (yanitla.Visible) { yanitla.Location = new Point(x - yanitla.Width, y); x = yanitla.Left - Tema.S(8); }
+                if (kopyala.Visible) { kopyala.Location = new Point(x - kopyala.Width, y); x = kopyala.Left - Tema.S(8); }
+                kapat.Location = new Point(x - kapat.Width, y);
+                durum.SetBounds(0, y, Math.Max(0, kapat.Left - Tema.S(8)), Tema.S(36));
+            };
+            diz();
+
+            kopyala.Click += (s, e) => { try { Clipboard.SetText(metin); kopyala.Text = "Kopyalandı"; kopyala.Ikon = Ik.TikDaire; diz(); } catch { } };
             kapat.Click += (s, e) => Close();
-            Icerik.Controls.AddRange(new Control[] { kutu, kopyala, kapat });
-            Shown += (s, e) => { kutu.Select(0, 0); kopyala.Focus(); SystemSounds.Asterisk.Play(); };
+
+            Action gonder = () =>
+            {
+                var t = giris.Text.Trim();
+                if (t == "" || gidiyor) return;
+                gidiyor = true; giris.Enabled = false; yanitla.Enabled = false;
+                yanitla.Text = "Gönderiliyor"; diz();
+                if (kanal == null)
+                {
+                    kanal = new PaylasKanali();
+                    kanal.Geldi += a => { try { BeginInvoke((Action)(() =>
+                    {
+                        if (a[0] == "BITTI" && a.Length >= 3)
+                        {
+                            gidiyor = false;
+                            if (a[2] == "1")
+                            {
+                                giris.Visible = false; yanitla.Visible = false; kopyala.Visible = false;
+                                durum.Text = "✓ Yanıt gönderildi"; durum.ForeColor = Renk.Yesil; durum.Visible = true; diz();
+                                var z = new System.Windows.Forms.Timer { Interval = 2500 }; z.Tick += (s2, e2) => { z.Dispose(); Close(); }; z.Start();
+                            }
+                            else Hata(a.Length > 3 ? a[3] : "Gönderilemedi");
+                        }
+                        else if (a[0] == "KOPTU" && gidiyor) { gidiyor = false; kanal = null; Hata("Bağlantı koptu"); }
+                    })); } catch { } };
+                    if (!kanal.Baglan()) { kanal = null; gidiyor = false; Hata("Sem Ajan hizmetine ulaşılamadı"); return; }
+                }
+                kanal.Gonder("GONDER", hedef, "", t);
+            };
+            this.hata = m => { giris.Enabled = true; yanitla.Enabled = true; yanitla.Text = "Gönder"; durum.Text = m; durum.ForeColor = Renk.PembeKoyu; durum.Visible = true; diz(); giris.Focus(); };
+
+            yanitla.Click += (s, e) =>
+            {
+                if (!yanitAcik)
+                {
+                    yanitAcik = true;
+                    int d = Tema.S(52);
+                    Top -= d; Height += d;
+                    giris.SetBounds(0, Icerik.Height - Tema.S(36 + 12 + 42), Icerik.Width, Tema.S(42));
+                    giris.Visible = true; kopyala.Visible = false;
+                    yanitla.Text = "Gönder"; yanitla.Ikon = Ik.GonderOk; diz();
+                    Activate(); giris.Focus();
+                    return;
+                }
+                gonder();
+            };
+            giris.Kutu.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; gonder(); } };
+
+            Icerik.Controls.AddRange(new Control[] { kutu, giris, durum, kopyala, kapat, yanitla });
+            Shown += (s, e) => { kutu.Select(0, 0); (yanitVar ? (Control)yanitla : kopyala).Focus(); SystemSounds.Asterisk.Play(); };
+            FormClosed += (s, e) => { try { kanal?.Dispose(); } catch { } };
         }
+
+        Action<string> hata;
+        void Hata(string m) => hata?.Invoke(m);
 
         static int Satir(string m)
         {
@@ -371,6 +439,62 @@ namespace Sem.Ajan
         {
             using (var o = new OpenFileDialog { Multiselect = true, Title = "Gönderilecek dosyaları seçin" })
                 if (o.ShowDialog(this) == DialogResult.OK) Ekle(o.FileNames);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int pid);
+
+        /// <summary>Tek Sem Paylaş penceresi: zaten açıksa dosyalar ona eklenir (sağ tıkta her dosya ayrı işlem olarak gelir).</summary>
+        public static void Calistir(IEnumerable<string> yollar)
+        {
+            var liste = yollar.Where(y => !string.IsNullOrWhiteSpace(y)).ToList();
+            var boru = "SemPaylasForm-" + Process.GetCurrentProcess().SessionId;
+            bool yeni;
+            using (var m = new Mutex(true, @"Local\SemPaylasForm", out yeni))
+            {
+                if (!yeni)
+                {
+                    try { AllowSetForegroundWindow(-1); } catch { }
+                    for (int i = 0; i < 25; i++)
+                    {
+                        try
+                        {
+                            using (var c = new NamedPipeClientStream(".", boru, PipeDirection.Out))
+                            {
+                                c.Connect(400);
+                                using (var w = new StreamWriter(c, new UTF8Encoding(false))) { foreach (var y in liste) w.WriteLine(y); w.WriteLine(""); }
+                                return;
+                            }
+                        }
+                        catch { Thread.Sleep(200); }
+                    }
+                    return;
+                }
+                var f = new PaylasForm(liste);
+                new Thread(() =>
+                {
+                    while (true)
+                    {
+                        try
+                        {
+                            using (var sv = new NamedPipeServerStream(boru, PipeDirection.In, 1))
+                            {
+                                sv.WaitForConnection();
+                                var gelen = new List<string>();
+                                using (var r = new StreamReader(sv, new UTF8Encoding(false))) { string l; while ((l = r.ReadLine()) != null && l != "") gelen.Add(l); }
+                                while (!f.IsHandleCreated) Thread.Sleep(50);
+                                f.BeginInvoke((Action)(() =>
+                                {
+                                    f.Ekle(gelen);
+                                    if (f.WindowState == FormWindowState.Minimized) f.WindowState = FormWindowState.Normal;
+                                    f.Activate();
+                                }));
+                            }
+                        }
+                        catch { Thread.Sleep(200); }
+                    }
+                }) { IsBackground = true }.Start();
+                Application.Run(f);
+            }
         }
 
         void Ekle(IEnumerable<string> yollar)

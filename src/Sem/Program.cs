@@ -35,7 +35,7 @@ namespace Sem
 
             if (mod == "/paylas")
             {
-                Application.Run(new Ajan.PaylasForm(args.Skip(1)));
+                Ajan.PaylasForm.Calistir(args.Skip(1));
                 return 0;
             }
 

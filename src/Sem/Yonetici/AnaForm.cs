@@ -757,6 +757,12 @@ namespace Sem.Yonetici
                                 var em = new Mesaj("AYAR"); em["ekran_izni"] = ayarlar.Onizleme ? "1" : "0";
                                 try { Baglanti.Gonder(p.Ip, em, 3000); } catch { }
                             }
+                            // Mesaja yanıt ve klasik sağ tık menüsü (Ayarlar) tüm bilgisayarlara
+                            if ((d.Alan.ContainsKey("mesaj_yanit") && (d["mesaj_yanit"] == "1") != ayarlar.MesajYanit) || (d.Alan.ContainsKey("klasik_menu") && (d["klasik_menu"] == "1") != ayarlar.KlasikMenu))
+                            {
+                                var ym = new Mesaj("AYAR"); ym["mesaj_yanit"] = ayarlar.MesajYanit ? "1" : "0"; ym["klasik_menu"] = ayarlar.KlasikMenu ? "1" : "0";
+                                try { Baglanti.Gonder(p.Ip, ym, 3000); } catch { }
+                            }
                             // Açılış ve kapanış ayarları (tek ekrandan) her bilgisayara; kapalı olanlara açılınca
                             if (plan != null) AcKapEsitle(acKap, plan, p, d);
                             // Yeni sağlık uyarısı Etkinlik'e düşsün
@@ -1571,7 +1577,7 @@ namespace Sem.Yonetici
                     Uygula("Paylaşım ayarı", AcikHedefler(true), p => { var m = new Mesaj("AYAR"); m["paylasim"] = f.Paylasim ? "1" : "0"; m["telefon"] = f.Telefon ? "1" : "0"; return m; });
                 // Açılış/kapanış bu arada (alt pencereden) kaydedilmiş olabilir: onları koru
                 var y = YonetimAyar.Oku(); var a = f.Ayar;
-                y.Onizleme = a.Onizleme; y.Dosya = a.Dosya; y.Yazici = a.Yazici; y.Program = a.Program; y.Duvar = a.Duvar; y.Duyurular = a.Duyurular;
+                y.Onizleme = a.Onizleme; y.Dosya = a.Dosya; y.Yazici = a.Yazici; y.Program = a.Program; y.Duvar = a.Duvar; y.Duyurular = a.Duyurular; y.MesajYanit = a.MesajYanit; y.KlasikMenu = a.KlasikMenu;
                 ayarlar = y; ayarlar.Yaz();
                 OzellikleriUygula();
                 if (ayarlar.Onizleme) OnizlemeYenile();

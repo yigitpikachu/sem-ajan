@@ -161,6 +161,7 @@ namespace Sem.Yonetici
     {
         public bool Onizleme = true, Dosya = true, Yazici = true, Program = true, Duvar = true, Duyurular = true, Sabah = true;
         public bool Liste;
+        public bool MesajYanit = true, KlasikMenu = true; // gelen mesaja yanıt; Windows 11 klasik sağ tık menüsü
 
         // Açılış ve kapanış (tek ekran): tanımlandıysa bilgisayarlara sürekli bu ayarlar uygulanır (kapalı olanlara açılınca).
         public bool AcKapTanimli;
@@ -187,6 +188,7 @@ namespace Sem.Yonetici
                 Func<string, bool, bool> b = (k, vars) => d.TryGetValue(k, out var v) ? v == "1" : vars;
                 a.Onizleme = b("onizleme", true); a.Dosya = b("dosya", true); a.Yazici = b("yazici", true); a.Program = b("program", true);
                 a.Duvar = b("duvar", true); a.Duyurular = b("duyurular", true); a.Sabah = b("sabah", true); a.Liste = b("liste", false);
+                a.MesajYanit = b("mesaj_yanit", true); a.KlasikMenu = b("klasik_menu", true);
                 a.AcKapTanimli = b("ackap", false); a.AcilistaAc = b("acilista_ac", true);
                 for (int g = 0; g < 7; g++) if (d.TryGetValue("kapanma_" + AjanAyar.GunKod[g], out var k)) a.Kapanma[g] = k;
                 int n;
@@ -208,7 +210,7 @@ namespace Sem.Yonetici
             {
                 var l = new List<string> {
                     "onizleme=" + b(Onizleme), "dosya=" + b(Dosya), "yazici=" + b(Yazici), "program=" + b(Program),
-                    "duvar=" + b(Duvar), "duyurular=" + b(Duyurular), "sabah=" + b(Sabah), "liste=" + b(Liste),
+                    "duvar=" + b(Duvar), "duyurular=" + b(Duyurular), "sabah=" + b(Sabah), "liste=" + b(Liste), "mesaj_yanit=" + b(MesajYanit), "klasik_menu=" + b(KlasikMenu),
                     "ackap=" + b(AcKapTanimli), "acilista_ac=" + b(AcilistaAc), "sabah_saat=" + SabahSaat,
                     "uyari_dk=" + UyariDk, "ertele_dk=" + ErteleDk, "ertele_hak=" + ErteleHak,
                     "acilmayan=" + string.Join(";", Acilmayan), "kapanmayan=" + string.Join(";", Kapanmayan) };

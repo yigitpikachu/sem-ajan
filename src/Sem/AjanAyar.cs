@@ -40,6 +40,8 @@ namespace Sem.Ajan
         public bool SabahAcilis;            // yönetici bilgisayarı: günün ilk açılışında listedekilere açma sinyali
         public string SabahAcilisTarih = ""; // o gün gönderildi mi (yyyy-MM-dd)
         public bool WolHazir;               // ağ kartının uyandırma ayarı açıldı mı
+        public bool MesajYanit = true;      // gelen yazı mesajına bildirimden yanıt verilebilsin
+        public bool KlasikMenu = true;      // Windows 11'de klasik (tam) sağ tık menüsü
 
         // Paylaşım (1.4)
         public bool Yonetici;               // kurulumda "Yönetici bilgisayarı" seçildi mi
@@ -93,6 +95,8 @@ namespace Sem.Ajan
             if (d.TryGetValue("grup_ad", out v)) a.GrupAd = v;
             if (d.TryGetValue("simge", out v)) a.Simge = v;
             if (d.TryGetValue("paylasim", out v)) a.Paylasim = v != "0";
+            if (d.TryGetValue("mesaj_yanit", out v)) a.MesajYanit = v != "0";
+            if (d.TryGetValue("klasik_menu", out v)) a.KlasikMenu = v != "0";
             if (d.TryGetValue("telefon", out v)) a.Telefon = v != "0";
             if (d.TryGetValue("ekran_izni", out v)) a.EkranIzni = v != "0";
             if (d.TryGetValue("parmakizi", out v)) a.Parmakizi = v;
@@ -133,6 +137,8 @@ namespace Sem.Ajan
             sb.AppendLine("grup_ad=" + Tek(GrupAd));
             sb.AppendLine("simge=" + Tek(Simge));
             sb.AppendLine("paylasim=" + (Paylasim ? "1" : "0"));
+            sb.AppendLine("mesaj_yanit=" + (MesajYanit ? "1" : "0"));
+            sb.AppendLine("klasik_menu=" + (KlasikMenu ? "1" : "0"));
             sb.AppendLine("telefon=" + (Telefon ? "1" : "0"));
             sb.AppendLine("ekran_izni=" + (EkranIzni ? "1" : "0"));
             sb.AppendLine("yazici_kilit=" + (YaziciKilit ? "1" : "0"));

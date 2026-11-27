@@ -188,7 +188,7 @@ namespace Sem.Ajan
         }
 
         // ================================================================== Sem bilgisayarları arası (şifreli TCP)
-        public Mesaj Isle(Mesaj m)
+        public Mesaj Isle(Mesaj m, string ip = "")
         {
             switch (m.Komut)
             {
@@ -199,7 +199,7 @@ namespace Sem.Ajan
                     bool yoneticiden = m["yonetici"] == "1";
                     var dosyalar = (m["dosyalar"] ?? "").Split('\n').Select(x => x.Split('|')).Where(x => x.Length == 2 && x[0] != "")
                         .Select(x => { long b; long.TryParse(x[1], out b); return (ad: x[0], boyut: b); }).ToList();
-                    if (m["metin"] != "") servis.EkranaGonder("METIN", kimden, m["metin"]);
+                    if (m["metin"] != "") servis.EkranaGonder("METIN", kimden, m["metin"], ip != "" ? "sem:" + ip : "", Ayar.MesajYanit ? "1" : "0");
                     if (dosyalar.Count == 0) return Mesaj.Basari("Mesaj iletildi");
                     if (!yoneticiden)
                     {
@@ -553,7 +553,7 @@ namespace Sem.Ajan
             // Yazı mesajı: dosya aktarımı gerekmez, ekranda gösterilir.
             if (liste.All(x => x.tur.StartsWith("text/") && x.onizleme != ""))
             {
-                foreach (var x in liste) servis.EkranaGonder("METIN", kimden, x.onizleme);
+                foreach (var x in liste) servis.EkranaGonder("METIN", kimden, x.onizleme, parmak != "" ? "ls:" + parmak : "", Ayar.MesajYanit ? "1" : "0");
                 Yanit(r, 204, null); return;
             }
             var dosyalar = liste.Where(x => !(x.tur.StartsWith("text/") && x.onizleme != "")).ToList();

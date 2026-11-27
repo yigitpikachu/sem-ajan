@@ -299,6 +299,7 @@ namespace Sem.Ajan
                         lock (kilit) uyariGosterildi = false; // yeni açılan ekrana bekleyen uyarıyı tekrar göster
                         DuvarGonder();
                         EkranaGonder("PAYLASIM", ayar.Paylasim ? "1" : "0", Klasorler.Kok);
+                        EkranaGonder("KABUK", ayar.KlasikMenu ? "1" : "0");
                         string satir;
                         while ((satir = oku.ReadLine()) != null) EkrandanGelen(EkranHatti.Coz(satir));
                     }
@@ -450,7 +451,11 @@ namespace Sem.Ajan
         Mesaj Isle(Mesaj m, TcpClient c)
         {
             if (m.Komut.StartsWith("PAYLAS_") || m.Komut.StartsWith("ORTAK_"))
-                return paylasim.Isle(m) ?? Mesaj.Hata("Bilinmeyen komut: " + m.Komut);
+            {
+                string ip = "";
+                try { var ep = (IPEndPoint)c.Client.RemoteEndPoint; ip = (ep.Address.IsIPv4MappedToIPv6 ? ep.Address.MapToIPv4() : ep.Address).ToString(); } catch { }
+                return paylasim.Isle(m, ip) ?? Mesaj.Hata("Bilinmeyen komut: " + m.Komut);
+            }
             switch (m.Komut)
             {
                 case "DURUM": return Durum(c);
@@ -553,12 +558,15 @@ namespace Sem.Ajan
                         if (m.Alan.ContainsKey("paylasim")) ayar.Paylasim = m["paylasim"] == "1";
                         if (m.Alan.ContainsKey("telefon")) ayar.Telefon = m["telefon"] == "1";
                         if (m.Alan.ContainsKey("ekran_izni")) ayar.EkranIzni = m["ekran_izni"] == "1";
+                        if (m.Alan.ContainsKey("mesaj_yanit")) ayar.MesajYanit = m["mesaj_yanit"] == "1";
+                        if (m.Alan.ContainsKey("klasik_menu")) ayar.KlasikMenu = m["klasik_menu"] == "1";
                         if (m.Alan.ContainsKey("yazici_kilit")) { ayar.YaziciKilit = m["yazici_kilit"] == "1"; sonYaziciKontrol = DateTime.MinValue; }
                         if (m["yazici_ip"] != "" && IPAddress.TryParse(m["yazici_ip"], out _)) ayar.YaziciIp = m["yazici_ip"];
                         ayar.Yaz(); uyariGosterildi = false;
                     }
                     EkranaGonder("UYARI_KAPAT");
                     EkranaGonder("PAYLASIM", ayar.Paylasim ? "1" : "0", Klasorler.Kok);
+                    EkranaGonder("KABUK", ayar.KlasikMenu ? "1" : "0");
                     return Mesaj.Basari("Ayarlar kaydedildi");
 
                 case "DUVAR":
@@ -694,6 +702,7 @@ namespace Sem.Ajan
             r["gorunen"] = ayar.GorunenAd; r["grup"] = ayar.Grup; r["grup_ad"] = ayar.GrupAd; r["simge"] = ayar.Simge;
             r["duvar_kip"] = ayar.DuvarKip;
             r["ekran_izni"] = ayar.EkranIzni ? "1" : "0";
+            r["mesaj_yanit"] = ayar.MesajYanit ? "1" : "0"; r["klasik_menu"] = ayar.KlasikMenu ? "1" : "0";
             r["yazici_kilit"] = ayar.YaziciKilit ? "1" : "0";
             r["saglik"] = Saglik.Ozet();
             r["paylasim"] = ayar.Paylasim ? "1" : "0"; r["telefon"] = ayar.Telefon ? "1" : "0"; r["yonetici"] = ayar.Yonetici ? "1" : "0";

@@ -40,6 +40,7 @@ namespace Sem.Ajan
             duvarBekci.Start();
             new Thread(Dongu) { IsBackground = true }.Start();
             try { GonderMenusu(); } catch { }
+            try { SagTikMenusu(); } catch { }
             // Açık yönetim paneli varsa yeni sürüme geçsin (güncellemeden sonra bu taraf yeni sürümle açılır)
             try { EventWaitHandle ys; if (EventWaitHandle.TryOpenExisting(@"Local\SemYeniSurum", out ys)) using (ys) ys.Set(); } catch { }
             // Ana bilgisayarda Sem Ajan simgesi varken ayrı "Sem Paylaş" simgesi gösterilmez (ikisi tek simgede)
@@ -55,6 +56,29 @@ namespace Sem.Ajan
             if (string.IsNullOrEmpty(k)) return;
             var lnk = Path.Combine(k, "Sem Paylaş.lnk");
             if (!File.Exists(lnk)) Kurulum.KisayolOlustur(lnk, Application.ExecutablePath, "/paylas", "Dosyaları bilgisayarlara ve telefonlara gönder");
+        }
+
+        /// <summary>Dosya ve klasöre sağ tık > "Sem ile gönder" (çok seçimde her dosya aynı Sem Paylaş penceresine eklenir).</summary>
+        static void SagTikMenusu()
+        {
+            var exe = Application.ExecutablePath;
+            foreach (var tur in new[] { "*", "Directory" })
+                using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Classes\" + tur + @"\shell\SemIleGonder"))
+                {
+                    k.SetValue("", "Sem ile gönder");
+                    k.SetValue("Icon", "\"" + exe + "\",0");
+                    k.SetValue("MultiSelectModel", "Player");
+                    using (var c = k.CreateSubKey("command")) c.SetValue("", "\"" + exe + "\" /paylas \"%1\"");
+                }
+        }
+
+        /// <summary>Windows 11'de klasik (tam) sağ tık menüsü; Windows 10'a dokunulmaz. Bir sonraki oturum açılışında etkinleşir.</summary>
+        static void KlasikMenu(bool ac)
+        {
+            if (Environment.OSVersion.Version.Build < 22000) return;
+            const string yol = @"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}";
+            if (ac) using (var k = Registry.CurrentUser.CreateSubKey(yol + @"\InprocServer32")) k.SetValue("", "");
+            else Registry.CurrentUser.DeleteSubKeyTree(yol, false);
         }
 
         static void PaylasAc() { try { System.Diagnostics.Process.Start(Application.ExecutablePath, "/paylas"); } catch { } }
@@ -171,8 +195,11 @@ namespace Sem.Ajan
                     new SoruKarti(p[2], p[3], p[4], sn, c => Gonder("CEVAP", id, c.ToString())).Show();
                     break;
                 }
+                case "KABUK":
+                    try { KlasikMenu(p.Length > 1 && p[1] == "1"); } catch (Exception e) { Gunluk.Yaz("Klasik menü: " + e.Message); }
+                    break;
                 case "METIN":
-                    new MetinKarti(p[1], p[2]).Show();
+                    new MetinKarti(p[1], p[2], p.Length > 3 ? p[3] : "", p.Length > 4 && p[4] == "1").Show();
                     break;
                 case "GELDI":
                 {
