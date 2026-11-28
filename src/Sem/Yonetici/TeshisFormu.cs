@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Sem.Arayuz;
 using Sem.Ortak;
+using MK = Sem.Arayuz.MesajKutusu;
 
 namespace Sem.Yonetici
 {
@@ -64,6 +65,20 @@ namespace Sem.Yonetici
                 case "temp": return "Geçici dosya temizliği";
                 case "disk": return "Disk taraması";
                 case "diskonar": return "Açılışta disk onarımı";
+                case "sfc": return "Sistem dosyası onarımı";
+                case "dism": return "Windows onarımı (DISM)";
+                case "defender": return "Virüs tanımı güncelleme ve tarama";
+                case "wuonar": return "Windows Update onarımı";
+                case "aghafif": return "Ağ onarımı (hafif)";
+                case "agtam": return "Ağ ayarlarını sıfırlama";
+                case "saat": return "Saat eşitleme";
+                case "aygit": return "Aygıtları yeniden tarama";
+                case "bellek": return "Bellek testi (sonraki açılış)";
+                case "sysmain": return "SysMain'i kapat";
+                case "acilis": return "Açılıştan çıkar: " + ad;
+                case "checkup": return "Tam check-up";
+                case "sicaklik": return "Sıcaklık ölçümünü aç";
+                case "geri": return "Geri al";
                 default: return islem;
             }
         }
@@ -81,10 +96,218 @@ namespace Sem.Yonetici
     {
         static readonly CultureInfo Tr = new CultureInfo("tr-TR");
         static double Ciftle(Mesaj m, string k) => Izleme.Ciftle(m[k]);
-        static int Tam(Mesaj m, string k) { int n; return int.TryParse(m[k], out n) ? n : 0; }
+        internal static int Tam(Mesaj m, string k) { int n; return int.TryParse(m[k], out n) ? n : 0; }
         static string Ghz(int mhz) => (mhz / 1000.0).ToString("0.0", Tr) + " GHz";
         static int Medyan(IEnumerable<int> l) { var a = l.OrderBy(x => x).ToList(); return a.Count == 0 ? -1 : a[a.Count / 2]; }
         static readonly string[] Windows = { "msmpeng", "tiworker", "trustedinstaller", "wuauserv", "searchindexer", "system", "svchost", "compattelrunner", "mrt", "msiexec" };
+
+        static string OlayAdi(string kod)
+        {
+            switch (kod)
+            {
+                case "7": return "bozuk kesim";
+                case "51": return "yazma hatası";
+                case "153": return "okuma/yazma yeniden denendi";
+                case "ntfs55": return "dosya sistemi bozuk";
+                case "129": return "disk yanıt vermedi";
+                default: return "olay " + kod;
+            }
+        }
+
+        static void DiskKurallari(Mesaj m, List<Bulgu> b)
+        {
+            int hata = Tam(m, "olay_disk"), sifir = Tam(m, "olay_disk_sifir"), saat = Tam(m, "disk_saat"), duz = Tam(m, "disk_duzeltilemeyen");
+            bool smart = m["smart_uyari"] == "1", saglikKotu = m["disk_tur"].Contains("Uyarı") || m["disk_tur"].Contains("Arızal");
+            var tr = new CultureInfo("tr-TR");
+            var olaylar = m["olay_disk_detay"].Split(';').Where(x => x.Contains(",")).Select(x =>
+            {
+                var p = x.Split(','); DateTime z; var zs = DateTime.TryParseExact(p[0], "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out z) ? z.ToString("d MMM HH:mm", tr) : p[0];
+                return zs + " " + OlayAdi(p[1]);
+            }).ToList();
+            var sayac = new List<string>();
+            if (saat > 0) sayac.Add(saat.ToString("N0", tr) + " saat çalışmış (~" + Math.Round(saat / 2500.0, 1).ToString(tr) + " yıl mesai)");
+            if (Tam(m, "disk_isi") > 0) sayac.Add("sıcaklık " + m["disk_isi"] + "°");
+            if (m["disk_duzeltilemeyen"] != "") sayac.Add("düzeltilemeyen hata " + duz);
+            if (Tam(m, "disk_asinma") > 0) sayac.Add("aşınma %" + m["disk_asinma"]);
+            string sayacMetin = sayac.Count > 0 ? " Disk bilgisi: " + string.Join(", ", sayac) + "." : "";
+            string olayMetin = olaylar.Count > 0 ? " Son kayıtlar: " + string.Join(" · ", olaylar) + "." : "";
+
+            // Kesin arıza belirtisi: SMART, Windows sağlık durumu, düzeltilemeyen hata ya da çok sayıda gerçek disk hatası
+            if (smart || saglikKotu || duz > 0 || hata >= 3)
+            {
+                var neden = new List<string>();
+                if (smart) neden.Add("disk kendi arıza uyarısını (SMART) veriyor");
+                if (saglikKotu) neden.Add("Windows disk sağlığını \"" + (m["disk_tur"].Contains("Arızal") ? "arızalı" : "uyarı") + "\" gösteriyor");
+                if (duz > 0) neden.Add(duz + " düzeltilemeyen okuma/yazma hatası var");
+                if (hata >= 3) neden.Add("son 7 günde sistem diskinde " + hata + " hata kaydı var");
+                b.Add(new Bulgu { Baslik = "Disk arızalanıyor olabilir", Olasilik = 2, Donanim = true, Kanit = char.ToUpper(neden[0][0]) + string.Join("; ", neden).Substring(1) + "." + olayMetin + sayacMetin,
+                    Oneri = "Önemli dosyaların yedeğini hemen alın; disk değişmeli. Tarama sorunlu kesimleri gösterir.", Coz = "disk", CozMetin = "Diski tara" });
+            }
+            else if (hata > 0)
+                b.Add(new Bulgu { Baslik = "Disk " + hata + " kez hata kaydetti", Olasilik = 0, Kanit = "Son 7 günde sistem diskinde " + hata + " hata kaydı var; disk sağlığı ve SMART normal." + olayMetin + sayacMetin,
+                    Oneri = "Tek tük kayıt çoğunlukla elektrik kesintisi ya da ani kapanmadan olur. Tekrarlarsa tarama yapın.", Coz = "disk", CozMetin = "Diski tara" });
+            if (sifir >= 5)
+                b.Add(new Bulgu { Baslik = "Disk zaman zaman yanıt vermiyor", Olasilik = 1, Donanim = true, Kanit = "Son 7 günde disk denetleyicisi " + sifir + " kez yanıt alamayıp diski sıfırladı; bu anlarda bilgisayar birkaç saniye donar." + sayacMetin,
+                    Oneri = "SATA kablosunu ve güç kablosunu kontrol edin, mümkünse değiştirin. Disk eskiyse yenilemek gerekir." });
+        }
+
+        static List<string[]> Parca(string s) => s.Split(';').Where(x => x.Trim() != "").Select(x => x.Split(':')).ToList();
+
+        /// <summary>Çökme, Windows, güvenlik, ağ, açılış, servis ve bellek kontrolleri.</summary>
+        static void Kontroller(Mesaj m, List<Bulgu> b)
+        {
+            // ---- Çökmeler
+            int mavi = Tam(m, "mavi_ekran");
+            if (mavi > 0)
+            {
+                var kod = m["mavi_ekran_kod"]; var anlam = MaviEkran(kod);
+                b.Add(new Bulgu { Baslik = "Mavi ekran (" + mavi + " kez, son 30 gün)", Olasilik = 2, Donanim = anlam.donanim,
+                    Kanit = "Windows çöküp yeniden başlamış. Son hata kodu " + (kod == "" ? "okunamadı" : kod) + (anlam.metin != "" ? ": " + anlam.metin : "") + ".",
+                    Oneri = anlam.donanim ? "Kod donanımı gösteriyor; bellek testi yapın, sürerse servise gösterin." : "Önce sistem dosyası onarımı yapın; sürerse son kurulan program ya da sürücü kaldırılmalı.",
+                    Coz = anlam.donanim ? "bellek" : "sfc", CozMetin = anlam.donanim ? "Bellek testini ayarla" : "Sistem dosyalarını onar" });
+            }
+            int bek = Tam(m, "beklenmedik");
+            if (bek >= 2 && Tam(m, "olay_guc41") == 0)
+                b.Add(new Bulgu { Baslik = "Düzgün kapanmadı (" + bek + " kez)", Olasilik = 0, Kanit = "Son 7 günde Windows " + bek + " kez kapatılmadan kapanmış.", Oneri = "Fişten çekme ya da elektrik kesintisi ise sorun değil; kendiliğinden oluyorsa güç kaynağına bakılmalı." });
+            var cokme = Parca(m["program_cokme"]).Where(x => x.Length >= 3).ToList();
+            int topC = cokme.Sum(x => Tam2(x[1]) + Tam2(x[2]));
+            if (topC >= 3)
+                b.Add(new Bulgu { Baslik = "Programlar çöküyor ya da donuyor", Olasilik = topC >= 8 ? 2 : 1,
+                    Kanit = "Son 7 günde: " + string.Join(", ", cokme.Select(x => ProgramAdi(x[0]) + " " + (Tam2(x[1]) > 0 ? Tam2(x[1]) + " kez çöktü" : "") + (Tam2(x[1]) > 0 && Tam2(x[2]) > 0 ? ", " : "") + (Tam2(x[2]) > 0 ? Tam2(x[2]) + " kez yanıt vermedi" : ""))) + ".",
+                    Oneri = "Tek program ise onarın ya da yeniden kurun (Program ekle/kaldır). Birçok program birden çöküyorsa sistem dosyası onarımı ve bellek testi yapın.", Coz = "sfc", CozMetin = "Sistem dosyalarını onar" });
+            int ekran = Tam(m, "ekran_surucu");
+            if (ekran > 0)
+                b.Add(new Bulgu { Baslik = "Ekran kartı sürücüsü " + ekran + " kez çöktü", Olasilik = ekran >= 3 ? 2 : 1,
+                    Kanit = "Son 7 günde ekran sürücüsü yanıt vermeyip yeniden başlatıldı; bu anlarda ekran kararır ya da donar.",
+                    Oneri = "Ekran kartı (işlemcideki) sürücüsünü üreticinin sitesinden güncelleyin; RAM tek kanalsa ve ısı yüksekse bu da tetikler." });
+
+            // ---- Windows
+            if (m["yeniden_bekliyor"] == "1")
+                b.Add(new Bulgu { Baslik = "Yeniden başlatma bekliyor", Olasilik = 1, Kanit = "Bir Windows güncellemesi yarım kalmış, yeniden başlatılmayı bekliyor. Bu sırada sistem yavaşlayabilir.", Oneri = "Bilgisayarı yeniden başlatın (kapatıp açmak hızlı başlatma açıksa yetmez)." });
+            DateTime sg;
+            if (DateTime.TryParseExact(m["son_guncelleme"], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out sg) && (DateTime.Now - sg).TotalDays > 45 || Tam(m, "wu_hata") >= 3)
+                b.Add(new Bulgu { Baslik = "Windows güncellenemiyor", Olasilik = 1,
+                    Kanit = (m["son_guncelleme"] != "" ? "Son güncelleme " + sg.ToString("d MMMM yyyy", Tr) + ". " : "") + (Tam(m, "wu_hata") > 0 ? "Son 14 günde " + m["wu_hata"] + " güncelleme kurulamadı." : ""),
+                    Oneri = "Windows Update sıfırlanır (önbellek yenilenir, önce geri yükleme noktası alınır).", Coz = "wuonar", CozMetin = "Windows Update'i onar" });
+            var aygit = Parca(m["aygit_sorun"]);
+            if (aygit.Count > 0)
+                b.Add(new Bulgu { Baslik = aygit.Count + " aygıtta sürücü sorunu", Olasilik = 1, Kanit = string.Join(", ", aygit.Select(x => x[0] + (x.Length > 1 ? " (" + AygitKod(x[1]) + ")" : ""))) + ".",
+                    Oneri = "Aygıtlar yeniden taranır; düzelmezse sürücüsü üreticinin sitesinden kurulmalı.", Coz = "aygit", CozMetin = "Aygıtları yeniden tara" });
+            DateTime su;
+            if (DateTime.TryParseExact(m["saat_utc"], "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out su))
+            {
+                var fark = Math.Abs((DateTime.UtcNow - su).TotalSeconds);
+                if (fark > 120) b.Add(new Bulgu { Baslik = "Saat " + (fark >= 3600 ? (int)(fark / 3600) + " saat" : (int)(fark / 60) + " dakika") + " kaymış", Olasilik = 1, Kanit = "Bu bilgisayarın saati bu bilgisayarla (" + Environment.MachineName + ") uyuşmuyor. Yanlış saat güvenli sitelerde ve e-devlette hata verir.", Oneri = "Saat internetten eşitlenir.", Coz = "saat", CozMetin = "Saati eşitle" });
+            }
+            if (m["sayfa_dosyasi"] == "0")
+                b.Add(new Bulgu { Baslik = "Sanal bellek kapalı", Olasilik = 1, Kanit = "Sayfa dosyası yok; RAM dolunca programlar çöker.", Oneri = "Sistem > Gelişmiş > Performans > Sanal bellek: \"Otomatik yönet\" seçilmeli." });
+            if (m["isletim"].Contains("Windows 10"))
+                b.Add(new Bulgu { Baslik = "Windows 10 desteği bitti", Olasilik = -1, Kanit = m["isletim"] + ". Microsoft Ekim 2025'ten beri güvenlik güncellemesi vermiyor.", Oneri = "Donanım uygunsa Windows 11'e geçilmeli; değilse antivirüsün güncel kalması daha önemli." });
+
+            // ---- Güvenlik
+            var av = Parca(m["antivirus"]).Where(x => x.Length >= 2).ToList();
+            var baskaAv = av.Where(x => x[1] == "1" && x[0].IndexOf("Defender", StringComparison.OrdinalIgnoreCase) < 0).ToList();
+            if (baskaAv.Count >= 2)
+                b.Add(new Bulgu { Baslik = "İki antivirüs birlikte çalışıyor", Olasilik = 2, Kanit = string.Join(" ve ", baskaAv.Select(x => x[0])) + " aynı anda açık; birbirini tarayıp bilgisayarı ciddi yavaşlatır.", Oneri = "Birini Program ekle/kaldır'dan kaldırın." });
+            if (m.Alan.ContainsKey("def_etkin") && baskaAv.Count == 0)
+            {
+                int imza = Tam(m, "def_imza_gun"), tarama = Tam(m, "def_tarama_gun");
+                if (m["def_etkin"] != "1" || m["def_anlik"] != "1")
+                    b.Add(new Bulgu { Baslik = "Virüs koruması kapalı", Olasilik = 2, Kanit = "Windows Defender " + (m["def_etkin"] != "1" ? "kapalı" : "anlık koruması kapalı") + " ve başka antivirüs yok.", Oneri = "Windows Güvenliği'nden gerçek zamanlı korumayı açın; ardından tarama yapılır.", Coz = "defender", CozMetin = "Güncelle ve tara" });
+                else if (imza > 7 || tarama > 30)
+                    b.Add(new Bulgu { Baslik = "Virüs koruması güncel değil", Olasilik = 0, Kanit = (imza > 7 ? "Tanımlar " + imza + " günlük. " : "") + (tarama > 30 && tarama < 10000 ? "Son tarama " + tarama + " gün önce." : tarama >= 10000 ? "Hiç tarama yapılmamış." : ""), Oneri = "Tanımlar güncellenir ve hızlı tarama yapılır.", Coz = "defender", CozMetin = "Güncelle ve tara" });
+            }
+            int tehdit = Tam(m, "tehdit");
+            if (tehdit > 0)
+                b.Add(new Bulgu { Baslik = "Virüs bulundu (" + tehdit + " kez)", Olasilik = 2, Kanit = "Son 7 günde Defender tehdit yakaladı" + (m["tehdit_ad"] != "" ? ": " + m["tehdit_ad"] : "") + ".", Oneri = "Defender genelde karantinaya alır; tanımlar güncellenip yeniden tarama yapılmalı. USB belleklere dikkat.", Coz = "defender", CozMetin = "Güncelle ve tara" });
+
+            // ---- Ağ
+            if (m["ag_ad"] != "")
+            {
+                int hiz = Tam(m, "ag_hiz"), kayip = Tam(m, "ag_kayip"), ms = Tam(m, "ag_ms"), dns = Tam(m, "dns_ms"), sinyal = Tam(m, "wifi_sinyal");
+                bool kablosuz = m["ag_kablosuz"] == "1";
+                if (!kablosuz && hiz > 0 && hiz < 1000)
+                    b.Add(new Bulgu { Baslik = "Ağ kablosu " + hiz + " Mbps'de çalışıyor", Olasilik = hiz <= 10 ? 2 : 1, Donanim = true, Kanit = "Kart ve switch 1000 Mbps destekliyorsa bu, kablonun ya da fişin bozuk olduğunu gösterir (8 telden 4'ü çalışıyor). Dosya paylaşımı ve ekran izleme yavaşlar.", Oneri = "Ağ kablosunu değiştirin ya da duvardaki prizi kontrol edin." });
+                if (kayip >= 10 || ms >= 50)
+                    b.Add(new Bulgu { Baslik = "Modeme bağlantı sorunlu", Olasilik = kayip >= 30 ? 2 : 1, Donanim = !kablosuz, Kanit = "Modeme (" + m["ag_gecit"] + ") 10 ping: kayıp %" + kayip + (ms >= 0 ? ", ortalama " + ms + " ms" : "") + ". Normalde %0 ve 1-2 ms olmalı." + (kablosuz && sinyal > 0 ? " Wi-Fi sinyali %" + sinyal + "." : ""),
+                        Oneri = kablosuz ? "Erişim noktasına yakın olun ya da kablo kullanın." : "Kablo ve switch bağlantısını kontrol edin. Hafif ağ onarımı denenebilir.", Coz = "aghafif", CozMetin = "Ağı onar (hafif)" });
+                else if (kablosuz && sinyal > 0 && sinyal < 50)
+                    b.Add(new Bulgu { Baslik = "Wi-Fi sinyali zayıf (%" + sinyal + ")", Olasilik = 1, Donanim = true, Kanit = "Zayıf sinyal internetin kesilip yavaşlamasına yol açar.", Oneri = "Erişim noktasına yakın olun ya da kablo kullanın." });
+                if (dns < 0 || dns > 1500)
+                    b.Add(new Bulgu { Baslik = dns < 0 ? "İsim çözümleme (DNS) çalışmıyor" : "İsim çözümleme (DNS) yavaş", Olasilik = dns < 0 ? 2 : 1, Kanit = dns < 0 ? "Siteler açılmaz ama ağ bağlı görünür." : "Bir site adı " + dns + " ms'de çözüldü; siteler geç açılır.", Oneri = "DNS önbelleği temizlenir ve IP yenilenir; düzelmezse tam ağ sıfırlama.", Coz = "aghafif", CozMetin = "Ağı onar (hafif)" });
+                int cakisma = Tam(m, "ip_cakisma");
+                if (cakisma > 0)
+                    b.Add(new Bulgu { Baslik = "IP adresi çakışması", Olasilik = 2, Kanit = "Son 7 günde başka bir cihaz bu bilgisayarla aynı IP'yi kullandı (" + cakisma + " kez); bağlantı kopar.", Oneri = "IP yenilenir. Elle IP verilmiş bir cihaz varsa modemin dağıttığı aralığın (100-200) dışına alınmalı.", Coz = "aghafif", CozMetin = "IP'yi yenile" });
+            }
+
+            // ---- Açılış
+            int acilisAdet = Tam(m, "acilis_adet"), acilisSn = Tam(m, "acilis_sn");
+            if (acilisAdet >= 8 || acilisSn >= 120)
+                b.Add(new Bulgu { Baslik = "Açılış kalabalık" + (acilisSn > 0 ? " (" + acilisSn + " sn)" : ""), Olasilik = acilisSn >= 180 || acilisAdet >= 12 ? 1 : 0,
+                    Kanit = acilisAdet + " program Windows'la birlikte başlıyor" + (acilisSn > 0 ? ", açılış ortalama " + acilisSn + " saniye sürüyor" : "") + ". Aşağıdaki Açılış programları bölümünden kapatılabilir.",
+                    Oneri = "Gereksizleri açılıştan çıkarın; program kaldırılmaz, istenirse geri alınır." });
+
+            // ---- Klasik disk ve arka plan servisleri
+            if (m["disk_tur"].Contains("HDD") && (m["sysmain"] == "2" || m["sysmain"] == "3"))
+                b.Add(new Bulgu { Baslik = "SysMain klasik diski meşgul ediyor", Olasilik = 1, Kanit = "SysMain (Superfetch) programları önceden belleğe yüklemek için diski sürekli okur; HDD'de açılıştan sonra uzun süre %100 disk ve donmaya yol açar.", Oneri = "SysMain kapatılır; istenirse geri alınır.", Coz = "sysmain", CozMetin = "SysMain'i kapat" });
+
+            // ---- Sıcaklık ve fanlar (LibreHardwareMonitor)
+            if (m["sicaklik_surucu"] == "0")
+                b.Add(new Bulgu { Baslik = "İşlemci sıcaklığı ölçülmüyor", Olasilik = -1, Kanit = "Windows bu bilgisayarın işlemci sıcaklığını ve fan devrini vermiyor; ısınma ancak dolaylı anlaşılıyor.", Oneri = "Açık kaynaklı LibreHardwareMonitor'un imzalı sürücüsü (PawnIO) kurulur; sonra sıcaklık 5 dakikada bir kaydedilir. Geri al ile kaldırılır.", Coz = "sicaklik", CozMetin = "Sıcaklık ölçümünü aç" });
+            int cpuT = Tam(m, "sn_cpu_sicaklik");
+            var fanlar = Parca(m["sn_fanlar"]).Where(x => x.Length >= 2).Select(x => (ad: x[0], rpm: Tam2(x[1]))).ToList();
+            if (m["sn_hata"] != "" && m["sicaklik_surucu"] == "1")
+                b.Add(new Bulgu { Baslik = "Sıcaklık okunamadı", Olasilik = -1, Kanit = "Sürücü kurulu ama okuma hata verdi: " + m["sn_hata"], Oneri = "Bilgisayarı yeniden başlatıp tekrar bakın; düzelmezse Geri al ile kaldırın." });
+            if (fanlar.Count > 0 && fanlar.All(f => f.rpm == 0))
+                b.Add(new Bulgu { Baslik = "Fan dönmüyor görünüyor", Olasilik = cpuT >= 75 ? 2 : 1, Donanim = true, Kanit = "Anakart " + fanlar.Count + " fan başlığı bildiriyor, hepsi 0 devir" + (cpuT > 0 ? "; işlemci " + cpuT + "°" : "") + ". (Bazı anakartlar fan devrini hiç bildirmez.)", Oneri = "Kasayı açıp işlemci fanının döndüğüne bakın; tozluysa temizleyin, dönmüyorsa değiştirin." });
+            else if (cpuT >= 80)
+                b.Add(new Bulgu { Baslik = "İşlemci şu an " + cpuT + "°", Olasilik = cpuT >= 90 ? 2 : 1, Donanim = true, Kanit = "Ryzen işlemciler 95°'de kendini yavaşlatır; boşta 40-55°, yük altında 60-80° normaldir." + (fanlar.Count > 0 ? " Fanlar: " + string.Join(", ", fanlar.Select(f => f.ad + " " + f.rpm + " rpm")) + "." : ""), Oneri = "Fan ve soğutucunun tozunu alın, termal macunu yenileyin." });
+
+            // ---- Bellek testi
+            var bt = m["bellek_test"].Split(',');
+            if (bt.Length == 2 && bt[1] == "hata")
+                b.Add(new Bulgu { Baslik = "Bellek testi hata buldu", Olasilik = 2, Donanim = true, Kanit = bt[0] + " tarihli Windows bellek testi RAM'de hata buldu.", Oneri = "RAM tarağı değişmeli. Birden fazla tarak varsa tek tek takıp test ederek bozuğu bulun." });
+            else if (m["bellek_bekliyor"] == "1")
+                b.Add(new Bulgu { Baslik = "Bellek testi sonraki açılışta", Olasilik = -1, Kanit = "Bilgisayar yeniden başlatılınca 15-20 dakikalık bellek testi yapılacak.", Oneri = "Sonuç burada görünür." });
+        }
+
+        static int Tam2(string s) { int n; return int.TryParse(s, out n) ? n : 0; }
+
+        static string ProgramAdi(string exe)
+        {
+            var e = exe.ToLowerInvariant().Replace(".exe", "");
+            switch (e)
+            {
+                case "winword": return "Word"; case "excel": return "Excel"; case "powerpnt": return "PowerPoint"; case "outlook": return "Outlook";
+                case "chrome": return "Chrome"; case "msedge": return "Edge"; case "firefox": return "Firefox"; case "explorer": return "Dosya Gezgini";
+                case "acrord32": case "acrobat": return "Adobe Reader"; case "wps": case "et": case "wpp": return "WPS Office";
+                default: return exe;
+            }
+        }
+
+        static string AygitKod(string k)
+        {
+            switch (k) { case "28": return "sürücü yok"; case "10": return "başlatılamıyor"; case "43": return "aygıt hata bildirdi"; case "31": return "sürücü yüklenemedi"; case "1": return "yapılandırılmamış"; default: return "kod " + k; }
+        }
+
+        static (string metin, bool donanim) MaviEkran(string kod)
+        {
+            var k = kod.ToLowerInvariant().Replace("0x", "").TrimStart('0');
+            switch (k)
+            {
+                case "1a": return ("bellek yönetimi (çoğunlukla RAM arızası)", true);
+                case "50": return ("geçersiz bellek erişimi (RAM ya da sürücü)", true);
+                case "124": return ("donanım hatası (işlemci, ısı ya da güç)", true);
+                case "9f": return ("sürücü güç durumu hatası (uykuda takılma)", false);
+                case "a": case "d1": return ("sürücü hatası", false);
+                case "7e": case "1e": case "3b": return ("sistem ya da sürücü hatası", false);
+                case "ef": return ("kritik Windows işlemi kapandı (bozuk sistem dosyası ya da disk)", false);
+                case "7a": case "77": return ("disk okunamadı", true);
+                case "133": return ("işlem zaman aşımı (çoğunlukla sürücü ya da disk)", false);
+                case "116": case "117": return ("ekran sürücüsü yanıt vermedi", false);
+                default: return ("", false);
+            }
+        }
 
         public static List<Bulgu> Incele(Mesaj m, List<PerfOlcum> l, string ikizAd, Mesaj ikiz, List<PerfOlcum> ikizL)
         {
@@ -193,8 +416,7 @@ namespace Sem.Yonetici
                     });
                 }
             // ---- Disk
-            int diskOlay = Tam(m, "olay_disk");
-            if (diskOlay > 0) b.Add(new Bulgu { Baslik = "Disk hata kaydediyor", Olasilik = 2, Donanim = true, Kanit = "Windows son 7 günde " + diskOlay + " disk hatası kaydetti. Disk: " + m["disk_tur"] + ".", Oneri = "Önemli dosyaların yedeğini alın; disk değişmeye yakın olabilir. Disk taraması başlatılabilir.", Coz = "disk", CozMetin = "Diski tara" });
+            DiskKurallari(m, b);
             var mesgul = l.Where(x => x.Disk >= 80).ToList();
             if (l.Count >= 6 && mesgul.Count >= l.Count * 0.25)
             {
@@ -208,6 +430,7 @@ namespace Sem.Yonetici
             int whea = Tam(m, "olay_whea"), g41 = Tam(m, "olay_guc41");
             if (whea > 0) b.Add(new Bulgu { Baslik = "Windows donanım hatası kaydetti", Olasilik = 2, Donanim = true, Kanit = "Son 7 günde " + whea + " donanım hatası (WHEA). Genelde RAM, işlemci ya da anakarttan gelir.", Oneri = "RAM'leri çıkarıp takın; sürerse teknik servise gösterin." });
             if (g41 > 0) b.Add(new Bulgu { Baslik = "Beklenmedik kapanma (" + g41 + " kez)", Olasilik = g41 >= 3 ? 1 : 0, Donanim = true, Kanit = "Son 7 günde bilgisayar " + g41 + " kez düzgün kapanmadan kapanmış (elektrik kesintisi, fişten çekme ya da güç kaynağı).", Oneri = "Elektrik çekmeden kapanıyorsa güç kaynağı kontrol edilmeli." });
+            Kontroller(m, b);
             // ---- Genel bakım
             if (!b.Any(x => x.Coz == "temp"))
                 b.Add(new Bulgu { Baslik = "Genel bakım", Olasilik = -1, Kanit = "Windows'un ve programların biriktirdiği geçici dosyalar.", Oneri = "2 günden eski geçici dosyalar silinir.", Coz = "temp", CozMetin = "Geçici dosyaları temizle" });
@@ -311,7 +534,7 @@ namespace Sem.Yonetici
             string ikizAd = ""; Mesaj ikiz = null; List<PerfOlcum> ikizL = null;
             var adaylar = digerleri.Where(p => p.Acik && p.Ad != pc.Ad).ToList();
             var sonuclar = new System.Collections.Concurrent.ConcurrentBag<(Pc p, Mesaj m)>();
-            Parallel.ForEach(adaylar, p => { try { var c = Baglanti.Gonder(p.Ip, new Mesaj("PERF_VERI"), 30000); if (c.Tamam && c["islemci"] == m["islemci"] && m["islemci"] != "") sonuclar.Add((p, c)); } catch { } });
+            Parallel.ForEach(adaylar, p => { try { var c = Baglanti.Gonder(p.Ip, new Mesaj("PERF_VERI") { ["hafif"] = "1" }, 30000); if (c.Tamam && c["islemci"] == m["islemci"] && m["islemci"] != "") sonuclar.Add((p, c)); } catch { } });
             var en = sonuclar.Select(x => (x.p, x.m, l: PerfOlcum.Coz(x.m.Veri))).OrderByDescending(x => x.l.Count).FirstOrDefault();
             if (en.p != null) { ikizAd = en.p.Baslik; ikiz = en.m; ikizL = en.l; }
             var bulgular = Teshis.Incele(m, l, ikizAd, ikiz, ikizL);
@@ -340,7 +563,9 @@ namespace Sem.Yonetici
             int kaydir = -liste.Govde.AutoScrollPosition.Y;
             var tr = new CultureInfo("tr-TR");
             DateTime acilis; var ac = Izleme.Zaman(m["acilis"], out acilis) ? (DateTime.Now - acilis).TotalDays < 1 ? "bugün açıldı" : (int)(DateTime.Now - acilis).TotalDays + " gündür açık" : "";
-            ozet.Text = m["islemci"] + " · RAM " + m["ram_detay"] + " · " + m["disk_tur"] + (ac != "" ? " · " + ac : "") +
+            ozet.Text = m["islemci"] + " · RAM " + m["ram_detay"] + " · " + m["disk_tur"] + (Teshis.Tam(m, "disk_saat") > 0 ? " (" + Teshis.Tam(m, "disk_saat").ToString("N0", tr) + " saat)" : "") + (ac != "" ? " · " + ac : "") +
+                        (Teshis.Tam(m, "sn_cpu_sicaklik") > 0 ? " · işlemci " + m["sn_cpu_sicaklik"] + "°" : "") +
+                        (m["sn_fanlar"] != "" ? " · fan " + string.Join("/", m["sn_fanlar"].Split(';').Where(x => x.Contains(":")).Select(x => x.Split(':')[1])) + " rpm" : "") +
                         "\n" + l.Count + " ölçüm (son 2 gün)" + (ikizAd != "" ? " · " + ikizAd + " ile karşılaştırıldı" : "");
             grafik.Veri = l; grafik.Invalidate();
             liste.Temizle(); canliKart.Clear();
@@ -356,6 +581,15 @@ namespace Sem.Yonetici
             var asil = bulgular.Where(x => x.Olasilik >= 0).ToList();
             if (asil.Count == 0) liste.Metin("Belirgin bir sorun görünmüyor.", Renk.YesilKoyu, 11f, true, 28);
             foreach (var b in bulgular) liste.EklePx(Kart(b));
+            // Açılış programları
+            var acilisL = m["acilis_liste"].Split(';').Where(x => x.Trim() != "").ToList();
+            if (acilisL.Count > 0)
+            {
+                liste.Baslik("Açılışta başlayan programlar (" + acilisL.Count + ")");
+                foreach (var a in acilisL) liste.EklePx(AcilisSatiri(a));
+            }
+            liste.Baslik("Bakım araçları");
+            liste.EklePx(BakimAraclari());
             liste.Bitir();
             if (kaydir > 0) liste.Govde.AutoScrollPosition = new Point(0, kaydir);
             durum.Text = "Isı ve RAM gibi donanım nedenleri yazılımla çözülemez; yapılacak iş kartta yazar.";
@@ -417,13 +651,78 @@ namespace Sem.Yonetici
             });
         }
 
+        // Uzun süren ya da yeniden başlatma gerektirenler için önce onay istenir
+        internal static readonly Dictionary<string, string> Onayli = new Dictionary<string, string>
+        {
+            ["checkup"] = "Virüs taraması, disk taraması ve sistem dosyası denetimi sırayla yapılır. Klasik diskte 1 saati bulabilir; bu sırada bilgisayar kullanılabilir ama yavaşlar. Önce geri yükleme noktası alınır.",
+            ["dism"] = "Windows bileşenleri internetten onarılır; 10-30 dakika sürer. Önce geri yükleme noktası alınır.",
+            ["sfc"] = "Sistem dosyaları denetlenip bozuklar Windows'un orijinal kopyasıyla değiştirilir; 10-20 dakika sürer. Önce geri yükleme noktası alınır.",
+            ["wuonar"] = "Güncelleme servisleri durdurulup önbellek yenilenir; o sırada iniyorsa güncelleme baştan iner. Önce geri yükleme noktası alınır.",
+            ["agtam"] = "Ağ ayarları fabrika haline döner; bilgisayar yeniden başlatılana kadar geçerli olmaz. Elle girilmiş IP varsa yapılmaz. Önce geri yükleme noktası alınır.",
+            ["bellek"] = "Bilgisayar bir sonraki yeniden başlatmada 15-20 dakika bellek testi yapar; o sırada kullanılamaz. Şimdi yeniden başlatılmaz. Geri alınabilir.",
+            ["aghafif"] = "DNS önbelleği temizlenir ve IP yenilenir; bağlantı birkaç saniye kopabilir.",
+        };
+
+        bool Onayla(string islem)
+        {
+            string metin; if (!Onayli.TryGetValue(islem, out metin)) return true;
+            return MK.Sor(this, IslemKaydi.Adi(islem, ""), metin, "Başlat") == true;
+        }
+
+        Control BakimAraclari()
+        {
+            int w = liste.Genislik;
+            var p = new Panel { Width = w, BackColor = Renk.Zemin, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            var araclar = new (string islem, string metin, string ikon, bool ana)[]
+            {
+                ("checkup", "Tam check-up", Ik.Kalp, true), ("defender", "Virüs taraması", Ik.Kalkan, false), ("disk", "Disk tara", Ik.Anahtar_, false),
+                ("sfc", "Sistem dosyalarını onar", Ik.Anahtar_, false), ("dism", "Windows onarımı", Ik.Anahtar_, false), ("wuonar", "Windows Update onar", Ik.Esitle, false),
+                ("temp", "Geçici dosyalar", Ik.Sil, false), ("aghafif", "Ağı onar (hafif)", Ik.Kopuk, false), ("agtam", "Ağı sıfırla (tam)", Ik.Kopuk, false),
+                ("saat", "Saati eşitle", Ik.Takvim, false), ("aygit", "Aygıtları tara", Ik.Masaustu, false), ("bellek", "Bellek testi", Ik.Kalp, false),
+            };
+            int x = 0, y = 0, satirH = 0;
+            foreach (var a in araclar)
+            {
+                var sur = islemler.FirstOrDefault(k => k.Islem == a.islem);
+                bool suruyor = sur != null && sur.Suruyor;
+                var c = new Buton(suruyor ? a.metin + " · sürüyor" : a.metin, a.ikon, a.ana ? ButonTuru.Birincil : ButonTuru.Ikincil) { Enabled = !suruyor };
+                var isl = a.islem;
+                c.Click += (s, e) => { if (Onayla(isl)) Coz(isl, "", c); };
+                if (x > 0 && x + c.Width > w) { x = 0; y += satirH + Tema.S(8); satirH = 0; }
+                c.Location = new Point(x, y); p.Controls.Add(c);
+                x += c.Width + Tema.S(8); satirH = Math.Max(satirH, c.Height);
+            }
+            var not = Yazi.Etiket("Hiçbiri kendiliğinden çalışmaz. Ayar değiştirenler \"Geri al\" ile eski haline döner; sistem dosyalarına dokunanlardan önce geri yükleme noktası alınır; kişisel dosyalar silinmez.", 8.75f, false, Renk.Yazi3, false);
+            y += satirH + Tema.S(8);
+            not.SetBounds(0, y, w, Tema.S(36)); not.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            p.Controls.Add(not);
+            p.Height = y + Tema.S(44);
+            return p;
+        }
+
+        Control AcilisSatiri(string ad)
+        {
+            int w = liste.Genislik;
+            var p = new Panel { Width = w, Height = Tema.S(36), BackColor = Renk.Zemin, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            var son = islemler.FirstOrDefault(k => k.Islem == "acilis" && k.Ad == ad && k.Durum == "t" && k.Ek != "gerialindi");
+            var t = Yazi.Etiket(ad, 9.75f, false, son != null ? Renk.Yazi3 : Renk.Yazi, false); t.SetBounds(0, Tema.S(8), w - Tema.S(200), Tema.S(22)); t.AutoEllipsis = true; t.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            p.Controls.Add(t);
+            var c = new Buton(son != null ? "Çıkarıldı" : "Açılıştan çıkar", Ik.Sil, ButonTuru.Sade) { Enabled = son == null };
+            c.Location = new Point(w - c.Width, (p.Height - c.Height) / 2); c.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            c.Click += (s, e) => Coz("acilis", ad, c);
+            p.Controls.Add(c);
+            p.Paint += (s, e) => { using (var pen = new Pen(Renk.Cizgi)) e.Graphics.DrawLine(pen, 0, p.Height - 1, p.Width, p.Height - 1); };
+            return p;
+        }
+
         Control IslemKart(IslemKaydi x)
         {
             int w = liste.Genislik;
             var tr = new CultureInfo("tr-TR");
             var renk = x.Suruyor ? Renk.Mavi : x.Durum == "t" ? Renk.YesilKoyu : x.Durum == "y" ? Renk.Turuncu : Renk.PembeKoyu;
             var p = new Panel { Width = w, BackColor = Renk.Yuzey, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-            var t = Yazi.Etiket(IslemKaydi.Adi(x.Islem, x.Ad), 10f, true, Renk.Yazi, false); t.SetBounds(Tema.S(14), Tema.S(9), w - Tema.S(220), Tema.S(22)); t.AutoEllipsis = true;
+            var baslik = x.Islem == "geri" ? "Geri al: " + IslemKaydi.Adi(islemler.FirstOrDefault(k => k.Id == x.Ad)?.Islem ?? "", islemler.FirstOrDefault(k => k.Id == x.Ad)?.Ad ?? "").TrimEnd(' ', ':') : IslemKaydi.Adi(x.Islem, x.Ad);
+            var t = Yazi.Etiket(baslik, 10f, true, Renk.Yazi, false); t.SetBounds(Tema.S(14), Tema.S(9), w - Tema.S(220), Tema.S(22)); t.AutoEllipsis = true;
             var d = Yazi.Etiket("", 9f, true, renk, false); d.SetBounds(w - Tema.S(200), Tema.S(11), Tema.S(186), Tema.S(20)); d.TextAlign = ContentAlignment.TopRight; d.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             var a = Yazi.Etiket("", 9f, false, Renk.Yazi2, false); a.SetBounds(Tema.S(14), Tema.S(32), w - Tema.S(28), Tema.S(20)); a.AutoEllipsis = true; a.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             p.Controls.AddRange(new Control[] { t, d, a });
@@ -448,11 +747,24 @@ namespace Sem.Yonetici
                 sn.SetBounds(Tema.S(14), y - Tema.S(2), w - Tema.S(28), sh); sn.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
                 p.Controls.Add(sn); y += sh + Tema.S(4);
                 // Sonraki adım: tarama hata bulduysa açılışta onarım
-                if (x.Ek == "diskonar" && !islemler.Any(k => k.Islem == "diskonar" && k.Bas > x.Bas))
+                var sonraki = x.Ek == "diskonar" ? ("diskonar", "Açılışta onar") : x.Ek == "dism" ? ("dism", "Windows onarımını başlat") : x.Ek == "sfc" && x.Islem == "dism" ? ("sfc", "Sistem dosyalarını onar") : (null, null);
+                if (sonraki.Item1 != null && !islemler.Any(k => k.Islem == sonraki.Item1 && k.Bas > x.Bas))
                 {
-                    var c = new Buton("Açılışta onar", Ik.Anahtar_, ButonTuru.Birincil) { Location = new Point(Tema.S(14), y) };
-                    c.Click += (s, e) => Coz("diskonar", "", c);
+                    var c = new Buton(sonraki.Item2, Ik.Anahtar_, ButonTuru.Birincil) { Location = new Point(Tema.S(14), y) };
+                    var isl = sonraki.Item1;
+                    c.Click += (s, e) => { if (Onayla(isl)) Coz(isl, "", c); };
                     p.Controls.Add(c); y += c.Height + Tema.S(6);
+                }
+                if (x.Ek == "geri" && x.Durum == "t")
+                {
+                    var c = new Buton("Geri al", Ik.Esitle, ButonTuru.Ikincil) { Location = new Point(Tema.S(14), y) };
+                    c.Click += (s, e) => { if (MK.Sor(this, "Geri al", IslemKaydi.Adi(x.Islem, x.Ad) + " işlemi geri alınsın mı? Ayar eski haline döner.", "Geri al") == true) Coz("geri", x.Id, c); };
+                    p.Controls.Add(c); y += c.Height + Tema.S(6);
+                }
+                else if (x.Ek == "gerialindi")
+                {
+                    var g = Yazi.Etiket("Geri alındı", 9f, true, Renk.Yazi3, false); g.SetBounds(Tema.S(14), y, Tema.S(200), Tema.S(20));
+                    p.Controls.Add(g); y += Tema.S(24);
                 }
             }
             p.Height = y + Tema.S(6);

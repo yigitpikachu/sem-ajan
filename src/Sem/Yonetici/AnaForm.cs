@@ -31,8 +31,8 @@ namespace Sem.Yonetici
         bool gorunurIzin, oturumAcik, cikiliyor, tepsiBilgisiVerildi, basladi;
 
         // Görünüm
-        readonly Panel yan, sayfaPc, sayfaDuyuru, sayfaKayit, sayfaYazici, sayfaAg, sayfaSorun, sayfaLisans;
-        readonly MenuOgesi menuPc, menuDuyuru, menuKayit, menuEkle, menuSifre, menuGuncelle, menuAyar, menuYazici, menuAg, menuSorun, menuLisans;
+        readonly Panel yan, sayfaPc, sayfaDuyuru, sayfaKayit, sayfaYazici, sayfaAg, sayfaSorun, sayfaLisans, sayfaSaglik;
+        readonly MenuOgesi menuPc, menuDuyuru, menuKayit, menuEkle, menuSifre, menuGuncelle, menuAyar, menuYazici, menuAg, menuSorun, menuLisans, menuSaglik;
         readonly Label yonetimBaslik, merkezBaslik;
         readonly Izgara izgara;
         readonly Panel altBosluk = new Panel { Height = Tema.S(110), Width = Tema.S(10), Margin = Padding.Empty, BackColor = Renk.Zemin };
@@ -54,7 +54,7 @@ namespace Sem.Yonetici
             this.acJetonu = acJetonu ?? "";
             this.tepsiModu = tepsiModu; gorunurIzin = !tepsiModu;
             Text = "Sem Ajan";
-            StartPosition = FormStartPosition.CenterScreen; ClientSize = Tema.S(1240, 800); MinimumSize = Tema.S(860, 600);
+            StartPosition = FormStartPosition.CenterScreen; ClientSize = Tema.S(1240, 800); MinimumSize = Tema.S(860, 680);
             BackColor = Renk.Zemin; Font = Tema.Yazi(10f); DoubleBuffered = true;
             // Kenarlıksız, yuvarlak köşeli pencere: kendi küçült/büyüt/kapat düğmeleri, kenardan boyutlandırma
             FormBorderStyle = FormBorderStyle.None; Padding = new Padding(Kenar);
@@ -74,6 +74,7 @@ namespace Sem.Yonetici
             menuDuyuru = menu("Duyurular", Ik.Megafon);
             menuKayit = menu("Etkinlik", Ik.Gecmis);
             merkezBaslik = Yazi.UstBaslik("Merkez", Renk.Yazi3); merkezBaslik.BackColor = Renk.YanMenu; yan.Controls.Add(merkezBaslik);
+            menuSaglik = menu("Bilgisayar sağlığı", Ik.Kalp);
             menuYazici = menu("Yazıcı", Ik.YaziciIk);
             menuAg = menu("İnternet ve ağ", Ik.Kopuk);
             menuSorun = menu("Sorunlar", Ik.Sohbet);
@@ -177,10 +178,11 @@ namespace Sem.Yonetici
             sayfaAg = SayfaOlustur("Merkez", "İnternet ve ağ", "Kesintiler, günlük hız testi ve ağdaki cihazlar", out var abas);
             sayfaSorun = SayfaOlustur("Merkez", "Sorunlar", "Öğretmenlerin \"Sorun bildir\" ile gönderdikleri", out var sbas);
             sayfaLisans = SayfaOlustur("Merkez", "Lisanslar", "Açık bilgisayarlarda Windows ve Office lisans durumu", out var lbas);
-            foreach (var c in new Control[] { ybas, abas, sbas, lbas }) TasimaEkle(c);
+            sayfaSaglik = SayfaOlustur("Merkez", "Bilgisayar sağlığı", "Her bilgisayarın teşhis özeti ve toplu bakım", out var hbas);
+            foreach (var c in new Control[] { ybas, abas, sbas, lbas, hbas }) TasimaEkle(c);
 
             Controls.Add(sayfaPc); Controls.Add(sayfaDuyuru); Controls.Add(sayfaKayit);
-            Controls.Add(sayfaYazici); Controls.Add(sayfaAg); Controls.Add(sayfaSorun); Controls.Add(sayfaLisans); Controls.Add(yan);
+            Controls.Add(sayfaYazici); Controls.Add(sayfaAg); Controls.Add(sayfaSorun); Controls.Add(sayfaLisans); Controls.Add(sayfaSaglik); Controls.Add(yan);
             pencereDugmeleri = new PencereDugmeleri(this) { Anchor = AnchorStyles.Top | AnchorStyles.Right };
             Controls.Add(pencereDugmeleri); pencereDugmeleri.BringToFront();
             // Boş yerden tutup taşıma, çift tıklayınca büyütme (başlık çubuğu yerine)
@@ -194,6 +196,7 @@ namespace Sem.Yonetici
             menuAg.Click += (s, e) => SayfaGoster(4);
             menuSorun.Click += (s, e) => SayfaGoster(5);
             menuLisans.Click += (s, e) => SayfaGoster(6);
+            menuSaglik.Click += (s, e) => SayfaGoster(7);
             menuEkle.Click += (s, e) => Guvenli(BilgisayarEkle);
             menuSifre.Click += (s, e) => Guvenli(SifreDegistir);
             menuGuncelle.Click += (s, e) => Guvenli(Guncellemeler);
@@ -335,6 +338,7 @@ namespace Sem.Yonetici
             catch { }
             ListeyiCiz(); SecimGuncelle(); Yenile(); yenile.Start(); onizlemeZaman.Start();
             try { SorunRozeti(); } catch { }
+            try { SaglikTaramasiKur(); } catch { }
             Task.Run(() =>
             {
                 try { var s2 = Guncelleme.SonSurum(); if (s2.YeniMi) BeginInvoke((Action)(() => { menuGuncelle.Rozet = "Yeni"; menuGuncelle.Invalidate(); Tost("Yeni sürüm hazır: " + s2.Numara + ". Yan menüden \"Güncellemeler\"e tıklayın."); })); }
@@ -394,7 +398,7 @@ namespace Sem.Yonetici
                 // WS_THICKFRAME: Windows ancak "boyutlandırılabilir" pencerede kenardan boyutlandırmayı başlatır.
                 // Görünen çerçeve WM_NCCALCSIZE ile kaldırılır; pencere yine kenarlıksız görünür.
                 cp.Style |= 0x00040000;
-                cp.ClassStyle |= 0x20000; // CS_DROPSHADOW
+                // CS_DROPSHADOW kullanılmaz: kalın çerçeveli pencerede sağda ve altta sert gri bir şerit bırakıyordu
                 return cp;
             }
         }
@@ -414,7 +418,7 @@ namespace Sem.Yonetici
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); MaximizedBounds = Screen.FromHandle(Handle).WorkingArea; KoseleriAyarla(); }
         bool boyutlaniyor;
-        IEnumerable<Control> BoyutPanelleri() => new Control[] { yan, sayfaPc, sayfaDuyuru, sayfaKayit, sayfaYazici, sayfaAg, sayfaSorun, sayfaLisans, izgara }.Where(c => c != null);
+        IEnumerable<Control> BoyutPanelleri() => new Control[] { yan, sayfaPc, sayfaDuyuru, sayfaKayit, sayfaYazici, sayfaAg, sayfaSorun, sayfaLisans, sayfaSaglik, izgara }.Where(c => c != null);
         protected override void OnResize(EventArgs e) { base.OnResize(e); KoseleriAyarla(); if (!boyutlaniyor) Invalidate(); }
         protected override void OnLocationChanged(EventArgs e) { base.OnLocationChanged(e); if (IsHandleCreated) MaximizedBounds = Screen.FromControl(this).WorkingArea; }
 
@@ -560,8 +564,8 @@ namespace Sem.Yonetici
         {
             if (i == 1 && !ayarlar.Duyurular) i = 0;
             if (i == 3 && !ayarlar.Yazici) i = 0;
-            var sayfalar = new[] { sayfaPc, sayfaDuyuru, sayfaKayit, sayfaYazici, sayfaAg, sayfaSorun, sayfaLisans };
-            var menuler = new[] { menuPc, menuDuyuru, menuKayit, menuYazici, menuAg, menuSorun, menuLisans };
+            var sayfalar = new[] { sayfaPc, sayfaDuyuru, sayfaKayit, sayfaYazici, sayfaAg, sayfaSorun, sayfaLisans, sayfaSaglik };
+            var menuler = new[] { menuPc, menuDuyuru, menuKayit, menuYazici, menuAg, menuSorun, menuLisans, menuSaglik };
             for (int k = 0; k < sayfalar.Length; k++)
             {
                 // Merkez sayfaları her açılışta yeni verilerle kurulur; ayrılınca boşaltılır
@@ -577,6 +581,7 @@ namespace Sem.Yonetici
                 if (i == 3) f = new BaskiForm(h.Where(p => p.Acik).ToList(), Izleme.YoneticiBul(h));
                 else if (i == 4) f = new AgForm(Izleme.YoneticiBul(h), h);
                 else if (i == 5) f = new SorunlarForm { Degisti = SorunRozeti };
+                else if (i == 7) f = new SaglikForm(h, (s, t) => Kaydet(s, t), SaglikRozeti);
                 else f = new LisansForm(h.Where(p => p.Acik).ToList());
                 SayfaIcerigi(sayfalar[i], f);
                 if (i == 5) SorunRozeti();
@@ -592,6 +597,45 @@ namespace Sem.Yonetici
             if (govde == null) { govde = new Panel { Name = "govde", Dock = DockStyle.Fill, BackColor = Renk.Zemin }; sayfa.Controls.Add(govde); govde.BringToFront(); }
             foreach (var eski in govde.Controls.OfType<ModernForm>().ToList()) { govde.Controls.Remove(eski); eski.Close(); eski.Dispose(); }
             f.Gom(govde);
+        }
+
+        void SaglikRozeti()
+        {
+            try
+            {
+                List<Pc> h; lock (pcKilit) h = pcler.ToList();
+                int n = SaglikTarama.SorunluSayisi(h);
+                menuSaglik.Rozet = n > 0 ? n.ToString() : ""; menuSaglik.Invalidate();
+            }
+            catch { }
+        }
+
+        // Açık bilgisayarlar 6 saatte bir sırayla taranır (Müdür bilgisayarını yormamak için tek tek)
+        System.Windows.Forms.Timer saglikZaman;
+        bool saglikTaraniyor;
+        void SaglikTaramasiKur()
+        {
+            saglikZaman = new System.Windows.Forms.Timer { Interval = 10 * 60 * 1000 };
+            saglikZaman.Tick += (s, e) =>
+            {
+                saglikZaman.Interval = 6 * 60 * 60 * 1000;
+                if (saglikTaraniyor) return; saglikTaraniyor = true;
+                List<Pc> h; lock (pcKilit) h = pcler.Where(p => p.Acik).ToList();
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        foreach (var p in h)
+                        {
+                            var d = SaglikTarama.Tara(p);
+                            foreach (var b in SaglikTarama.YeniCiddi(p, d)) Kaydet(p.Baslik + ": " + b + " (Bilgisayar sağlığı)", 2);
+                        }
+                    }
+                    catch { }
+                    finally { saglikTaraniyor = false; try { BeginInvoke((Action)SaglikRozeti); } catch { } }
+                });
+            };
+            saglikZaman.Start();
         }
 
         void SorunRozeti()
@@ -612,7 +656,7 @@ namespace Sem.Yonetici
             }
             y += Tema.S(18);
             merkezBaslik.Location = new Point(Tema.S(20), y); y += Tema.S(22);
-            foreach (var m in new[] { menuYazici, menuAg, menuSorun, menuLisans })
+            foreach (var m in new[] { menuSaglik, menuYazici, menuAg, menuSorun, menuLisans })
             {
                 bool gorunsun = m != menuYazici || ayarlar.Yazici;
                 m.Visible = gorunsun;

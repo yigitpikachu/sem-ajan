@@ -609,7 +609,22 @@ namespace Sem.Arayuz
                 cubuk.SetBounds(kutu.ClientSize.Width - cubuk.Width, 0, cubuk.Width, kutu.ClientSize.Height);
             };
             if (ic is ScrollableControl sc) sc.Padding = new Padding(sc.Padding.Left, sc.Padding.Top, sc.Padding.Right + sb, sc.Padding.Bottom);
+            // Çubuk içerikle aynı anda kaysın: zamanlayıcıyı beklemeden (kaydırma sırasında zamanlayıcı geç kalır)
+            if (ic is ScrollableControl sc2) sc2.Scroll += (s, e) => cubuk.Esitle();
+            ic.MouseWheel += (s, e) => { try { ic.BeginInvoke((Action)cubuk.Esitle); } catch { } };
+            ic.Paint += (s, e) => cubuk.Esitle();
             return kutu;
+        }
+
+        /// <summary>Konum değiştiyse çubuğu hemen yeniden çizer.</summary>
+        void Esitle()
+        {
+            if (!IsHandleCreated || !ic.IsHandleCreated) return;
+            var d = oku();
+            if (d[0] == sonDeger) return;
+            sonDeger = d[0]; sonHareket = DateTime.Now;
+            if (opaklik < 0.8f && d[1] > d[2] + 1) opaklik = 0.8f;
+            Invalidate(); Update();
         }
 
         void Denetle()

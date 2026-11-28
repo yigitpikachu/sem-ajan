@@ -636,7 +636,7 @@ namespace Sem.Ajan
 
                 case "DOSYA_LISTE": return DosyaListe(m["yol"]);
                 case "BASKI_DEFTERI": { int g; if (!int.TryParse(m["gun"], out g)) g = 62; return BaskiDefteri.Oku(g); }
-                case "PERF_VERI": return Performans.Veri();
+                case "PERF_VERI": return Performans.Veri(m["hafif"] != "1");
                 case "PERF_COZ": return Performans.Coz(m["islem"], m["ad"]);
                 case "ISLEMLER": return Performans.Islemler();
                 case "TONER_DURUM": return TonerIzleme.Ozet(ayar.YaziciIp);

@@ -14,7 +14,9 @@ namespace Sem
         [STAThread]
         static int Main(string[] args)
         {
+            GomuluKutuphane.Kur();
             string mod = args.FirstOrDefault()?.ToLowerInvariant() ?? "";
+            if (mod == "/sensor") return SensorCalistir();
 
             if (mod == "/servis") { ServiceBase.Run(new AjanServis()); return 0; }
             if (mod == "/guncelle") return Kurulum.KendiniGuncelle();
@@ -70,6 +72,10 @@ namespace Sem
             Application.Run(new KurulumForm());
             return 0;
         }
+
+        // Ayrı metotta: LibreHardwareMonitor türleri yalnızca bu modda yüklenir
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        static int SensorCalistir() => Sensor.Calistir();
 
         public static bool YoneticiMi()
         {

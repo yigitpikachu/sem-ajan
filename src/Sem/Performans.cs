@@ -14,7 +14,7 @@ using Sem.Ortak;
 
 namespace Sem.Ajan
 {
-    static class Performans
+    static partial class Performans
     {
         static string Dosya => Path.Combine(AjanAyar.Klasor, "performans.txt");
         static readonly object k = new object();
@@ -58,7 +58,9 @@ namespace Sem.Ajan
 
         static int Sicaklik()
         {
-            // Çoğu masaüstü anakart bildirmez; bildirirse kullanılır
+            // Sıcaklık sürücüsü kuruluysa gerçek işlemci sıcaklığı (LibreHardwareMonitor)
+            try { int t; if (Sensor.SurucuVar() && int.TryParse(Sensor.Oku().TryGetValue("cpu_sicaklik", out var v) ? v : "", out t) && t > 5 && t < 120) return t; } catch { }
+            // Yoksa ACPI bölgesi (çoğu masaüstü anakart bildirmez)
             try
             {
                 using (var s = new ManagementObjectSearcher(@"root\WMI", "SELECT CurrentTemperature FROM MSAcpi_ThermalZoneTemperature"))
@@ -175,7 +177,70 @@ namespace Sem.Ajan
             catch { return false; }
         }
 
-        public static Mesaj Veri()
+        /// <summary>Sistem diskinin (C:) sağlığı: yalnızca disk sürücüsünün kendi hata olayları (başka kaynakların
+        /// aynı numaralı olayları sayılmaz, takılıp çıkarılan USB bellekler hariç), SMART ve Windows güvenilirlik sayaçları.</summary>
+        static void DiskSagligi(Mesaj r, string zaman)
+        {
+            int sistemDisk = -1;
+            try
+            {
+                using (var s = new ManagementObjectSearcher("ASSOCIATORS OF {Win32_LogicalDisk.DeviceID='C:'} WHERE AssocClass=Win32_LogicalDiskToPartition"))
+                    foreach (ManagementObject o in s.Get()) { sistemDisk = Convert.ToInt32(o["DiskIndex"]); break; }
+            }
+            catch { }
+            r["sistem_disk"] = sistemDisk.ToString();
+            // disk 7 bozuk kesim, 51 sayfalama sırasında hata, 153 işlem yeniden denendi; Ntfs 55 dosya sistemi bozuk;
+            // depolama denetleyicisi 129 yanıt vermedi (sıfırlandı)
+            var sorgu = "*[System[((Provider[@Name='disk'] and (EventID=7 or EventID=51 or EventID=153)) or (Provider[@Name='Ntfs' or @Name='Microsoft-Windows-Ntfs'] and EventID=55) or " +
+                        "(Provider[@Name='storahci' or @Name='stornvme' or @Name='iaStorA' or @Name='iaStorAC' or @Name='iaStorAVC' or @Name='iaStorV' or @Name='amdsata' or @Name='amd_sata'] and EventID=129))" + zaman + "]]";
+            int hata = 0, sifirlama = 0; var detay = new List<string>();
+            try
+            {
+                using (var rd = new EventLogReader(new EventLogQuery("System", PathType.LogName, sorgu) { ReverseDirection = true }))
+                    for (var e = rd.ReadEvent(); e != null && hata + sifirlama < 500; e = rd.ReadEvent())
+                        using (e)
+                        {
+                            string kaynak = e.ProviderName ?? "";
+                            if (kaynak == "disk")
+                            {
+                                // Olay hangi diske ait: \Device\Harddisk1\DR1 gibi; sistem diski değilse (USB bellek) sayılmaz
+                                string aygit = ""; try { aygit = Convert.ToString(e.Properties[0].Value); } catch { }
+                                var m = System.Text.RegularExpressions.Regex.Match(aygit, @"Harddisk(\d+)");
+                                if (sistemDisk >= 0 && m.Success && m.Groups[1].Value != sistemDisk.ToString()) continue;
+                            }
+                            bool sifir = e.Id == 129;
+                            if (sifir) sifirlama++; else hata++;
+                            if (detay.Count < 5)
+                                detay.Add((e.TimeCreated ?? DateTime.Now).ToString("yyyy-MM-dd HH:mm") + "," + (sifir ? "129" : kaynak.Contains("tfs") ? "ntfs55" : e.Id.ToString()));
+                        }
+            }
+            catch { }
+            r["olay_disk"] = hata.ToString(); r["olay_disk_sifir"] = sifirlama.ToString(); r["olay_disk_detay"] = string.Join(";", detay);
+            // SMART: disk kendi arızasını öngörüyor mu
+            try
+            {
+                using (var s = new ManagementObjectSearcher(@"root\WMI", "SELECT PredictFailure FROM MSStorageDriver_FailurePredictStatus"))
+                    foreach (ManagementObject o in s.Get()) if (Convert.ToBoolean(o["PredictFailure"])) r["smart_uyari"] = "1";
+            }
+            catch { }
+            // Güvenilirlik sayaçları (sistem diski): çalışma saati, sıcaklık, düzeltilemeyen hata, aşınma
+            try
+            {
+                using (var s = new ManagementObjectSearcher(@"root\Microsoft\Windows\Storage", "SELECT DeviceId, PowerOnHours, Temperature, ReadErrorsUncorrected, WriteErrorsUncorrected, Wear FROM MSFT_StorageReliabilityCounter"))
+                    foreach (ManagementObject o in s.Get())
+                    {
+                        if (sistemDisk >= 0 && Convert.ToString(o["DeviceId"]) != sistemDisk.ToString()) continue;
+                        string V(string ad) { try { var v = o[ad]; return v == null ? "" : Convert.ToString(v); } catch { return ""; } }
+                        r["disk_saat"] = V("PowerOnHours"); r["disk_isi"] = V("Temperature"); r["disk_asinma"] = V("Wear");
+                        long a, b; long.TryParse(V("ReadErrorsUncorrected"), out a); long.TryParse(V("WriteErrorsUncorrected"), out b);
+                        if (V("ReadErrorsUncorrected") != "" || V("WriteErrorsUncorrected") != "") r["disk_duzeltilemeyen"] = (a + b).ToString();
+                        break;
+                    }
+            }
+            catch { }
+        }
+
+        public static Mesaj Veri(bool tam = true)
         {
             var r = Mesaj.Basari();
             long hafta = 7L * 86400000;
@@ -220,8 +285,15 @@ namespace Sem.Ajan
             r["olay_kisma"] = OlayAdet("System", "*[System[Provider[@Name='Microsoft-Windows-Kernel-Processor-Power'] and (EventID=37)" + zaman + "]]").ToString();
             r["olay_whea"] = OlayAdet("System", "*[System[Provider[@Name='Microsoft-Windows-WHEA-Logger'] and (Level=1 or Level=2 or Level=3)" + zaman + "]]").ToString();
             r["olay_guc41"] = OlayAdet("System", "*[System[Provider[@Name='Microsoft-Windows-Kernel-Power'] and (EventID=41)" + zaman + "]]").ToString();
-            r["olay_disk"] = OlayAdet("System", "*[System[(EventID=7 or EventID=51 or EventID=153 or EventID=129)" + zaman + "]]").ToString();
+            DiskSagligi(r, zaman);
             r["olay_sicaklik"] = OlayAdet("System", "*[System[Provider[@Name='Microsoft-Windows-Kernel-Power'] and (EventID=86 or EventID=88)" + zaman + "]]").ToString();
+            if (tam) try { Kontrol(r); } catch { }
+            if (tam) try
+            {
+                r["sicaklik_surucu"] = Sensor.SurucuVar() ? "1" : "0";
+                foreach (var kv in Sensor.Oku()) r["sn_" + kv.Key] = kv.Value;
+            }
+            catch { }
             lock (k) r.Veri = File.Exists(Dosya) ? File.ReadAllBytes(Dosya) : new byte[0];
             return r;
         }
@@ -313,34 +385,36 @@ namespace Sem.Ajan
         public static Mesaj Coz(string islem, string ad)
         {
             lock (ik)
-                if ((islem == "disk" || islem == "temp" || islem == "diskonar") && KayitlariOku().Any(x => x.Islem == islem && x.Durum == "s" && suren.Contains(x.Id)))
-                    return Mesaj.Hata("Bu işlem zaten sürüyor");
+                if ((Uzun.Contains(islem) || islem == "diskonar") && KayitlariOku().Any(x => (x.Islem == islem || x.Islem == "checkup" || islem == "checkup") && Uzun.Contains(x.Islem) && x.Durum == "s" && suren.Contains(x.Id)))
+                    return Mesaj.Hata("Bu işlem (ya da check-up) zaten sürüyor");
             var r = new Kayit { Id = DateTime.Now.Ticks.ToString("x"), Bas = Simdi(), Islem = islem, Ad = ad ?? "" };
             lock (ik) suren.Add(r.Id);
             Yaz(r);
             // Uzun işler arka planda; kısa olanlar hemen sonuçlanır
-            if (islem == "disk" || islem == "temp")
+            if (Uzun.Contains(islem))
             {
                 new Thread(() =>
                 {
-                    try { if (islem == "disk") DiskTara(r); else TempTemizle(r); }
+                    try { UzunCalistir(r); }
                     catch (Exception e) { Bitir(r, false, e.Message); }
                 }) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
-                var m = Mesaj.Basari(islem == "disk" ? "Disk taraması başladı" : "Temizlik başladı"); m["id"] = r.Id; return m;
+                var m = Mesaj.Basari("Başladı"); m["id"] = r.Id; return m;
             }
             Mesaj sonuc;
-            try { sonuc = Kisa(islem, ad); } catch (Exception e) { sonuc = Mesaj.Hata(e.Message); }
+            try { sonuc = Kisa(islem, ad, r); } catch (Exception e) { sonuc = Mesaj.Hata(e.Message); }
             Bitir(r, sonuc.Tamam, sonuc["aciklama"], sonuc["ek"]);
             sonuc["id"] = r.Id;
             return sonuc;
         }
 
-        static Mesaj Kisa(string islem, string ad)
+        static Mesaj Kisa(string islem, string ad, Kayit kayit)
         {
             switch (islem)
             {
                 case "guc":
                 {
+                    var eski = System.Text.RegularExpressions.Regex.Match(GucPlani(), "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}").Value;
+                    if (eski != "") GeriYaz(kayit.Id, new Dictionary<string, string> { ["tur"] = "guc", ["guid"] = eski });
                     Calistir("powercfg.exe", "/setactive " + YuksekPerformans);
                     if (!GucPlani().Contains(YuksekPerformans))
                     {
@@ -353,13 +427,14 @@ namespace Sem.Ajan
                     Calistir("powercfg.exe", "/change standby-timeout-ac 0");
                     var g = GucPlani();
                     return g.Contains("8c5e7fda") || g.IndexOf("performans", StringComparison.OrdinalIgnoreCase) >= 0 || g.IndexOf("performance", StringComparison.OrdinalIgnoreCase) >= 0
-                        ? Mesaj.Basari("Güç ayarı Yüksek performans yapıldı, uyku kapatıldı. Hemen geçerli.") : Mesaj.Hata("Güç ayarı değiştirilemedi: " + g);
+                        ? GeriliBasari("Güç ayarı Yüksek performans yapıldı, uyku kapatıldı. Hemen geçerli.", eski != "") : Mesaj.Hata("Güç ayarı değiştirilemedi: " + g);
                 }
                 case "hizlibaslat":
                 {
                     using (var r = Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\Power")) r.SetValue("HiberbootEnabled", 0, RegistryValueKind.DWord);
                     bool ok = !HizliBaslatma();
-                    return ok ? Mesaj.Basari("Hızlı başlatma kapatıldı. Bir sonraki kapatıp açışta bilgisayar tam sıfırlanarak açılacak.") : Mesaj.Hata("Ayar yazılamadı");
+                    if (ok) GeriYaz(kayit.Id, new Dictionary<string, string> { ["tur"] = "hizlibaslat" });
+                    return ok ? GeriliBasari("Hızlı başlatma kapatıldı. Bir sonraki kapatıp açışta bilgisayar tam sıfırlanarak açılacak.", true) : Mesaj.Hata("Ayar yazılamadı");
                 }
                 case "program":
                 {
@@ -387,7 +462,7 @@ namespace Sem.Ajan
                     return Mesaj.Basari("Onarım bir sonraki açılışa ayarlandı. Bilgisayar yeniden başlayınca birkaç dakika onarım ekranı görünür.");
                 }
             }
-            return Mesaj.Hata("Bilinmeyen işlem");
+            return KisaYeni(islem, ad, kayit);
         }
 
         static void TempTemizle(Kayit r)
@@ -410,7 +485,9 @@ namespace Sem.Ajan
             Bitir(r, true, adet + " dosya silindi, " + (silinen / 1048576) + " MB yer açıldı" + (adet == 0 ? " (temizlenecek eski dosya yoktu)" : ""));
         }
 
-        static void DiskTara(Kayit r)
+        static void DiskTara(Kayit r) { var x = DiskTaraIc(r, ""); r.Asama = ""; Bitir(r, x.ok, x.sonuc, x.ek); }
+
+        static (bool ok, string sonuc, string ek) DiskTaraIc(Kayit r, string onek)
         {
             // chkdsk /scan: disk kullanılırken salt tarama yapar. İlerlemeyi satır satır okuyup kaydeder.
             Encoding oem; try { oem = Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage); } catch { oem = Encoding.Default; }
@@ -419,7 +496,7 @@ namespace Sem.Ajan
             var topRx = new System.Text.RegularExpressions.Regex(@"(Total|Toplam)\s*:\s*%?\s*(\d{1,3})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             var tum = new StringBuilder(); var satir = new StringBuilder();
             var sonYaz = DateTime.MinValue;
-            r.Asama = "Başlıyor"; Yaz(r);
+            r.Asama = onek + "Disk taraması başlıyor"; r.Ilerleme = ""; Yaz(r);
             using (var x = Process.Start(psi))
             {
                 x.PriorityClass = ProcessPriorityClass.BelowNormal;
@@ -431,7 +508,7 @@ namespace Sem.Ajan
                     if (s == "") continue;
                     tum.AppendLine(s);
                     var a = asamaRx.Match(s);
-                    if (a.Success) r.Asama = "Aşama " + a.Groups[2].Value + "/3: " + a.Groups[3].Value.Trim().TrimEnd('.', ' ');
+                    if (a.Success) r.Asama = onek + "Aşama " + a.Groups[2].Value + "/3: " + a.Groups[3].Value.Trim().TrimEnd('.', ' ');
                     var t = topRx.Match(s);
                     if (t.Success) r.Ilerleme = t.Groups[2].Value;
                     if (a.Success || (DateTime.Now - sonYaz).TotalSeconds > 3) { sonYaz = DateTime.Now; Yaz(r); }
@@ -441,11 +518,10 @@ namespace Sem.Ajan
                 int kod = x.HasExited ? x.ExitCode : -1;
                 var son = tum.ToString().Split('\n').Select(y => y.Trim()).Where(y => y != "" && !topRx.IsMatch(y)).ToList();
                 var ozet = string.Join(" ", son.Skip(Math.Max(0, son.Count - 2)));
-                r.Asama = "";
-                if (kod == 0 || kod == 2) Bitir(r, true, "Disk temiz, sorun bulunmadı.");
-                else if (kod == 1) Bitir(r, true, "Hatalar bulundu ve düzeltildi.");
-                else if (kod == 3) Bitir(r, false, "Diskte hata bulundu, onarım gerekiyor. " + ozet, "diskonar");
-                else Bitir(r, false, "Tarama tamamlanamadı. " + ozet);
+                if (kod == 0 || kod == 2) return (true, "Disk temiz, sorun bulunmadı.", "");
+                if (kod == 1) return (true, "Hatalar bulundu ve düzeltildi.", "");
+                if (kod == 3) return (false, "Diskte hata bulundu, onarım gerekiyor. " + ozet, "diskonar");
+                return (false, "Tarama tamamlanamadı. " + ozet, "");
             }
         }
     }
