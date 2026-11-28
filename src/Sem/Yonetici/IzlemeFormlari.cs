@@ -177,16 +177,19 @@ namespace Sem.Yonetici
             Govde.Controls.Add(l); y += Tema.S(yuk) + Tema.S(2); return l;
         }
         /// <summary>Solda metin, sağda soluk ek bilgi.</summary>
-        public Label Ikili(string sol, string sag, Color? solRenk = null, Action tik = null)
+        public Label Ikili(string sol, string sag, Color? solRenk = null, Action tik = null, bool kalin = false)
         {
-            int sw = Tema.S(170);
-            var a = Yazi.Etiket(sol, 9.75f, false, solRenk ?? Renk.Yazi, false); a.SetBounds(0, y, Genislik - sw - Tema.S(8), Tema.S(22)); a.AutoEllipsis = true; a.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            var b = Yazi.Etiket(sag, 9f, false, Renk.Yazi3, false); b.SetBounds(Genislik - sw, y + Tema.S(1), sw, Tema.S(22)); b.TextAlign = ContentAlignment.TopRight; b.AutoEllipsis = true; b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            var b = Yazi.Etiket(sag, 9f, false, Renk.Yazi3, false);
+            // Sağ sütun yazının kendi genişliğinde: kesilmez, sol taraf pencereyle uzayıp kısalır
+            int sw = Math.Min(Genislik / 2, TextRenderer.MeasureText(sag, b.Font).Width + Tema.S(6));
+            var a = Yazi.Etiket(sol, 9.75f, kalin, solRenk ?? Renk.Yazi, false); a.SetBounds(0, y, Genislik - sw - Tema.S(8), Tema.S(22)); a.AutoEllipsis = true; a.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            b.SetBounds(Genislik - sw, y + Tema.S(1), sw, Tema.S(22)); b.TextAlign = ContentAlignment.TopRight; b.AutoEllipsis = true; b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             if (tik != null) foreach (var c in new[] { a, b }) { c.Cursor = Cursors.Hand; c.Click += (s, e) => tik(); c.MouseEnter += (s, e) => a.ForeColor = Renk.Mavi; c.MouseLeave += (s, e) => a.ForeColor = solRenk ?? Renk.Yazi; }
             Govde.Controls.Add(a); Govde.Controls.Add(b); y += Tema.S(26); return a;
         }
         public void Bosluk(int px) => y += Tema.S(px);
         public void Ekle(Control c, int yuk) { c.Location = new Point(0, y); Govde.Controls.Add(c); y += Tema.S(yuk); }
+        public void EklePx(Control c) { c.Location = new Point(0, y); Govde.Controls.Add(c); y += c.Height; }
     }
 
     // ================================================================== Baskı ve toner
@@ -201,17 +204,17 @@ namespace Sem.Yonetici
         {
             SabitBoyut = true; this.pcler = pcler; this.yonetici = yonetici;
             int g = Icerik.Width;
-            var kart = new KartPanel { Location = new Point(0, 0), Size = new Size(g, Tema.S(112)), Dolgu = Renk.Yuzey };
-            tonerBas = Yazi.Etiket("Yazıcı", 11f, true, Renk.Yazi, false); tonerBas.SetBounds(Tema.S(16), Tema.S(12), g - Tema.S(200), Tema.S(24)); tonerBas.AutoEllipsis = true;
-            toner1 = Yazi.Etiket("Yazıcı bilgisi alınıyor…", 9.5f, false, Renk.Yazi2, false); toner1.SetBounds(Tema.S(16), Tema.S(40), g - Tema.S(32), Tema.S(22)); toner1.AutoEllipsis = true;
-            toner2 = Yazi.Etiket("", 9.5f, false, Renk.Yazi2, false); toner2.SetBounds(Tema.S(16), Tema.S(64), g - Tema.S(32), Tema.S(40));
+            var kart = new KartPanel { Location = new Point(0, 0), Size = new Size(g, Tema.S(124)), Dolgu = Renk.Yuzey };
+            tonerBas = Yazi.Etiket("Yazıcı", 11f, true, Renk.Yazi, false); tonerBas.SetBounds(Tema.S(16), Tema.S(18), g - Tema.S(200), Tema.S(24)); tonerBas.AutoEllipsis = true;
+            toner1 = Yazi.Etiket("Yazıcı bilgisi alınıyor…", 9.5f, false, Renk.Yazi2, false); toner1.SetBounds(Tema.S(16), Tema.S(52), g - Tema.S(32), Tema.S(22)); toner1.AutoEllipsis = true;
+            toner2 = Yazi.Etiket("", 9.5f, false, Renk.Yazi2, false); toner2.SetBounds(Tema.S(16), Tema.S(76), g - Tema.S(32), Tema.S(40));
             degisti = new Buton("Toner değişti", Ik.Yenile, ButonTuru.Ikincil) { BasiliTut = true, Visible = false };
-            degisti.Location = new Point(g - degisti.Width - Tema.S(14), Tema.S(10));
+            degisti.Location = new Point(g - degisti.Width - Tema.S(14), Tema.S(12));
             degisti.KisaBasildi += (s, e) => toner2.Text = "Yanlışlıkla olmasın diye düğmeyi dolana kadar basılı tutun.";
             degisti.Onaylandi += (s, e) => TonerDegisti();
             kart.Controls.AddRange(new Control[] { tonerBas, toner1, toner2, degisti });
-            kart.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; tonerBas.Anchor = toner1.Anchor = toner2.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; degisti.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            liste.Kutu.SetBounds(0, Tema.S(126), g, Icerik.Height - Tema.S(126) - Tema.S(40));
+            kart.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; tonerBas.Anchor = toner1.Anchor = toner2.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; degisti.Anchor = AnchorStyles.Top | AnchorStyles.Right; degisti.BringToFront();
+            liste.Kutu.SetBounds(0, Tema.S(138), g, Icerik.Height - Tema.S(138) - Tema.S(40));
             durum = Yazi.Etiket("Baskı kayıtları alınıyor…", 9.5f, false, Renk.Yazi2, false); durum.SetBounds(0, Icerik.Height - Tema.S(34), g, Tema.S(30));
             liste.Kutu.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; durum.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             Icerik.Controls.AddRange(new Control[] { kart, liste.Kutu, durum });
@@ -289,6 +292,21 @@ namespace Sem.Yonetici
             Ui(() => Ciz(hepsi, hata));
         }
 
+        /// <summary>Yazıcı adını sadeleştirir (aynı yazıcının farklı sürücü adları tek satırda toplanır).</summary>
+        static string Yazici(string ad)
+        {
+            ad = (ad ?? "").Trim();
+            if (ad == "") return "Bilinmeyen yazıcı";
+            if (ad.IndexOf("SENSYS", StringComparison.OrdinalIgnoreCase) >= 0 || ad.IndexOf("imageRUNNER", StringComparison.OrdinalIgnoreCase) >= 0) ad = "Canon " + ad;
+            foreach (var m in new[] { "Canon", "Brother", "HP", "Epson", "Samsung", "Xerox", "Kyocera", "Ricoh", "Lexmark", "Pantum" })
+                if (ad.IndexOf(m, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    var md = System.Text.RegularExpressions.Regex.Match(ad, "[A-Z]{1,4}[- ]?\\d{3,5}[A-Z]{0,4}");
+                    return m + (md.Success ? " " + md.Value : "");
+                }
+            return ad.Length > 40 ? ad.Substring(0, 40) : ad;
+        }
+
         void Ciz(List<(string pc, string[] p)> hepsi, int hata)
         {
             liste.Temizle();
@@ -297,10 +315,15 @@ namespace Sem.Yonetici
             int S(string[] p) { int n; return int.TryParse(p[4], out n) ? n : 0; }
             var ay = hepsi.Where(x => x.p[0].StartsWith(buAy)).ToList();
             var gAy = hepsi.Where(x => x.p[0].StartsWith(gecen)).ToList();
-            liste.Baslik("Bu ay · " + Izleme.Sayi(ay.Sum(x => S(x.p))) + " sayfa" + (gAy.Count > 0 ? "  (geçen ay " + Izleme.Sayi(gAy.Sum(x => S(x.p))) + ")" : ""));
+            liste.Baslik("Bu ay · yazıcıya göre");
             if (ay.Count == 0) liste.Metin("Bu ay henüz baskı kaydı yok. Kayıt, Sem güncellendikten sonra başlar.", Renk.Yazi2);
-            foreach (var grup in ay.GroupBy(x => x.pc).OrderByDescending(g => g.Sum(x => S(x.p))))
-                liste.Ikili(grup.Key, Izleme.Sayi(grup.Sum(x => S(x.p))) + " sayfa · " + grup.Count() + " belge");
+            foreach (var grup in ay.GroupBy(x => Yazici(x.p[3])).OrderByDescending(g => g.Sum(x => S(x.p))))
+            {
+                int gecenAy = gAy.Where(x => Yazici(x.p[3]) == grup.Key).Sum(x => S(x.p));
+                liste.Ikili(grup.Key, Izleme.Sayi(grup.Sum(x => S(x.p))) + " sayfa · " + grup.Count() + " belge" + (gecenAy > 0 ? " · geçen ay " + Izleme.Sayi(gecenAy) : ""), null, null, true);
+                foreach (var pg in grup.GroupBy(x => x.pc).OrderByDescending(g => g.Sum(x => S(x.p))))
+                    liste.Ikili("      " + pg.Key, Izleme.Sayi(pg.Sum(x => S(x.p))) + " sayfa · " + pg.Count() + " belge", Renk.Yazi2);
+            }
             var son = hepsi.OrderByDescending(x => x.p[0]).Take(200).ToList();
             if (son.Count > 0)
             {
@@ -309,7 +332,7 @@ namespace Sem.Yonetici
                 {
                     DateTime d; Izleme.Zaman(x.p[0], out d);
                     var belge = x.p[2] == "" ? "(adsız belge)" : x.p[2];
-                    liste.Ikili(belge, x.pc + " · " + d.ToString("d MMM HH:mm", tr) + " · " + S(x.p) + " sf");
+                    liste.Ikili(belge, x.pc + " · " + Yazici(x.p[3]).Split(' ')[0] + " · " + d.ToString("d MMM HH:mm", tr) + " · " + S(x.p) + " sf");
                 }
             }
             liste.Bitir();

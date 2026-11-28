@@ -413,7 +413,9 @@ namespace Sem.Yonetici
         }
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); MaximizedBounds = Screen.FromHandle(Handle).WorkingArea; KoseleriAyarla(); }
-        protected override void OnResize(EventArgs e) { base.OnResize(e); KoseleriAyarla(); Invalidate(); }
+        bool boyutlaniyor;
+        IEnumerable<Control> BoyutPanelleri() => new Control[] { yan, sayfaPc, sayfaDuyuru, sayfaKayit, sayfaYazici, sayfaAg, sayfaSorun, sayfaLisans, izgara }.Where(c => c != null);
+        protected override void OnResize(EventArgs e) { base.OnResize(e); KoseleriAyarla(); if (!boyutlaniyor) Invalidate(); }
         protected override void OnLocationChanged(EventArgs e) { base.OnLocationChanged(e); if (IsHandleCreated) MaximizedBounds = Screen.FromControl(this).WorkingArea; }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -433,6 +435,14 @@ namespace Sem.Yonetici
         {
             base.WndProc(ref m);
             if (m.Msg == 0x83 && m.WParam != IntPtr.Zero) { m.Result = IntPtr.Zero; return; } // WM_NCCALCSIZE: çerçeve yok, tamamı iç alan
+            // Sürükleyerek boyutlandırırken içerik her pikselde yeniden dizilmesin (kasma); bırakınca bir kez dizilir
+            if (m.Msg == 0x231 && !boyutlaniyor) { boyutlaniyor = true; foreach (var c in BoyutPanelleri()) c.SuspendLayout(); SuspendLayout(); }
+            if (m.Msg == 0x232 && boyutlaniyor)
+            {
+                boyutlaniyor = false; ResumeLayout(true);
+                foreach (var c in BoyutPanelleri()) c.ResumeLayout(true);
+                GenislikleriAyarla(); Yerlestir(); Invalidate(true);
+            }
             if (m.Msg == 0x84) // WM_NCHITTEST: kenardan boyutlandırma
             {
                 long lp = m.LParam.ToInt64();
@@ -748,6 +758,7 @@ namespace Sem.Yonetici
                 if (ayarlar.Onizleme) m.Ekle("Ekranı göster", Ik.Kamera, () => Guvenli(() => EkranGoster(secili[0])))
                                        .Ekle("Uzaktan kontrol", Ik.Pencere, () => Guvenli(() => UzakKontrol(secili[0])));
                 m.Ekle("Bilgiler", Ik.Bilgi, () => Guvenli(() => Bilgiler(secili[0])));
+                m.Ekle("Teşhis ve hızlandır", Ik.Kalp, () => Guvenli(() => { List<Pc> h; lock (pcKilit) h = pcler.ToList(); using (var f = new TeshisForm(secili[0], h, (s, t) => Kaydet(s, t))) f.ShowDialog(this); }));
                 m.Ekle("Adı ve grubu düzenle", Ik.Duzenle, () => Guvenli(() => Duzenle(secili[0]))).Ayrac();
             }
             else if (secili.Count > 1) m.Ekle("Grubunu değiştir", Ik.Etiket, () => Guvenli(GrupDegistir)).Ayrac();
@@ -770,6 +781,7 @@ namespace Sem.Yonetici
         string sonInternet = null, tonerUyariGunu = "";
         readonly HashSet<string> bildirilenCihaz = new HashSet<string>();
         bool radarIlk = true;
+        readonly Dictionary<string, DateTime> perfBildirim = new Dictionary<string, DateTime>();
 
         void SorunlariAc() { PaneliAc(); SayfaGoster(5); }
 
@@ -888,6 +900,14 @@ namespace Sem.Yonetici
                             // Öğretmenden gelen sorun bildirimi
                             if (d["sorun"] != "") foreach (var not in Izleme.SorunlariAl(p, d["sorun"])) SorunGeldi(p.Baslik, not);
                             if (d["yonetici"] == "1" && d.Alan.ContainsKey("internet")) IzlemeUyarilari(d);
+                            // Yavaşlama uyarısı (aynı bilgisayar için en çok 2 saatte bir)
+                            var pu = d["perf_uyari"];
+                            if (pu != "" && pu.Contains("|"))
+                            {
+                                DateTime son;
+                                lock (perfBildirim) { if (perfBildirim.TryGetValue(p.Baslik, out son) && (DateTime.Now - son).TotalHours < 2) pu = ""; else perfBildirim[p.Baslik] = DateTime.Now; }
+                                if (pu != "") Kaydet(p.Baslik + " yavaşladı: " + pu.Substring(pu.IndexOf('|') + 1) + " (Teşhis ve hızlandır ile bakın)", 2);
+                            }
                             // Yeni sağlık uyarısı Etkinlik'e düşsün
                             var sg = d["saglik"];
                             if (sg != p.SonSaglik)
