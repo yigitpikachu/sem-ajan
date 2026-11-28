@@ -211,109 +211,145 @@ namespace Sem.Yonetici
     }
 
     /// <summary>
-    /// Açılış ve kapanış: merkezin açık günleri ve kapanma saatleri, sabah açılma ve her bilgisayar için
-    /// "sabah açılsın" / "otomatik kapansın" seçimi tek ekranda.
+    /// Açılış ve kapanış: üstte merkezin programı (açık günler, gün gün açılış ve kapanış saati),
+    /// yanda her bilgisayar için "Genel / Özel saat / Hiç" seçimi. Uyarı ve erteleme "Gelişmiş"te.
     /// </summary>
     class AcKapForm : ModernForm
     {
         readonly YonetimAyar ayar;
         readonly Anahtar[] gun = new Anahtar[7];
-        readonly Giris[] saat = new Giris[7];
-        readonly Anahtar acilista, saatli;
-        readonly Giris sabahSaat;
+        readonly Giris[] acSaat = new Giris[7], kapSaat = new Giris[7];
+        readonly Anahtar acilista;
         readonly Adim uyari, erteleDk, erteleHak;
-        readonly List<(Pc Pc, IsaretKutusu Ac, IsaretKutusu Kapan)> satirlar = new List<(Pc, IsaretKutusu, IsaretKutusu)>();
+        readonly Func<Pc, bool> yoneticiMi;
+        // mod: "" = genel (programdaki saat), "-" = hiç, "08:30" = özel saat
+        readonly List<(Pc Pc, string[] Mod)> satirlar = new List<(Pc, string[])>();
 
-        public AcKapForm(YonetimAyar ayar, List<Pc> pcler) : base("Açılış ve kapanış", 880, 752)
+        public AcKapForm(YonetimAyar ayar, List<Pc> pcler, Func<Pc, bool> yoneticiMi) : base("Açılış ve kapanış", 880, 640)
         {
-            this.ayar = ayar;
-            int g = Icerik.Width, L = Tema.S(380), x2 = L + Tema.S(36), R = g - x2;
+            SabitBoyut = true; this.ayar = ayar; this.yoneticiMi = yoneticiMi;
+            int g = Icerik.Width, L = Tema.S(400), x2 = L + Tema.S(36), R = g - x2;
+            int kw = Tema.S(76), kolAc = L - Tema.S(16) - 2 * kw - Tema.S(10), kolKap = L - Tema.S(16) - kw;
 
-            // ---------------- Sol: günler
-            var u1 = Yazi.UstBaslik("Açık günler ve kapanma saati", Renk.Yazi3); u1.Location = new Point(0, 0); Icerik.Controls.Add(u1);
+            // ---------------- Sol: program
+            var u1 = Yazi.UstBaslik("Program", Renk.Yazi3); u1.Location = new Point(0, 0); Icerik.Controls.Add(u1);
+            foreach (var (metin, x) in new[] { ("Açılış", kolAc), ("Kapanış", kolKap) })
+            {
+                var h = Yazi.Etiket(metin, 8.5f, true, Renk.Yazi2, false); h.TextAlign = ContentAlignment.BottomCenter; h.SetBounds(x, 0, kw, Tema.S(20)); Icerik.Controls.Add(h);
+            }
             var kart = new KartPanel { Location = new Point(0, Tema.S(24)), Size = new Size(L, Tema.S(7 * 36 + 14)), BackColor = Renk.Zemin, Golge = false };
             Icerik.Controls.Add(kart);
             int y = Tema.S(8);
             foreach (int d in new[] { 1, 2, 3, 4, 5, 6, 0 })
             {
                 TimeSpan t; bool acik = TimeSpan.TryParse(ayar.Kapanma[d], out t) && ayar.Kapanma[d] != "";
-                saat[d] = new Giris { Text = acik ? t.ToString(@"hh\:mm") : (d == 6 ? "17:00" : "18:00"), Width = Tema.S(80), Height = Tema.S(34), Location = new Point(L - Tema.S(96), y), Enabled = acik };
-                saat[d].Kutu.TextAlign = HorizontalAlignment.Center; saat[d].Kutu.MaxLength = 5;
-                gun[d] = new Anahtar(AjanAyar.GunAd[d]) { Location = new Point(Tema.S(16), y + Tema.S(1)), Width = L - Tema.S(128), Acik = acik, BackColor = Renk.Yuzey };
-                int dd = d; gun[d].Degisti += (s, e) => { saat[dd].Enabled = gun[dd].Acik; saat[dd].Invalidate(); };
-                kart.Controls.Add(gun[d]); kart.Controls.Add(saat[d]);
+                kapSaat[d] = SaatKutusu(acik ? t.ToString(@"hh\:mm") : (d == 6 ? "17:00" : "18:00"), new Point(kolKap, y), acik, "");
+                acSaat[d] = SaatKutusu(acik ? ayar.Acilis[d] : "", new Point(kolAc, y), acik, "yok");
+                gun[d] = new Anahtar(AjanAyar.GunAd[d]) { Location = new Point(Tema.S(16), y + Tema.S(1)), Width = kolAc - Tema.S(24), Acik = acik, BackColor = Renk.Yuzey };
+                int dd = d;
+                gun[d].Degisti += (s, e) => { foreach (var k in new[] { acSaat[dd], kapSaat[dd] }) { k.Enabled = gun[dd].Acik; k.Invalidate(); } };
+                kart.Controls.Add(gun[d]); kart.Controls.Add(acSaat[d]); kart.Controls.Add(kapSaat[d]);
                 y += Tema.S(36);
             }
             y = kart.Bottom + Tema.S(6);
-            var n1 = Yazi.Etiket("Kapalı günlerde bilgisayarlar açılmaz ve otomatik kapanmaz.", 9f, false, Renk.Yazi3); n1.Location = new Point(0, y); Icerik.Controls.Add(n1);
-
-            y += Tema.S(30);
-            var u2 = Yazi.UstBaslik("Sabah açılma", Renk.Yazi3); u2.Location = new Point(0, y); Icerik.Controls.Add(u2);
-            y += Tema.S(24);
-            acilista = new Anahtar("Bu bilgisayar açılınca işaretlileri aç", "Günün ilk açılışında, yalnızca açık günlerde") { Location = new Point(0, y), Width = L, Acik = ayar.AcilistaAc };
+            var n1 = Yazi.Etiket("Açılış boşsa o gün saatle açılmaz. Kapalı günlerde bilgisayarlar açılmaz ve otomatik kapanmaz.", 9f, false, Renk.Yazi3, false);
+            n1.SetBounds(0, y, L, Tema.S(36)); Icerik.Controls.Add(n1);
+            y += Tema.S(44);
+            acilista = new Anahtar("Müdür açılınca diğerlerini de aç", "Günün ilk açılışında; özel saati olan kendi saatini bekler") { Location = new Point(0, y), Width = L, Acik = ayar.AcilistaAc };
             Icerik.Controls.Add(acilista);
             y += Tema.S(62);
-            saatli = new Anahtar("Ayrıca şu saatte aç") { Location = new Point(0, y + Tema.S(3)), Width = L - Tema.S(96), Acik = ayar.SabahSaat != "" };
-            sabahSaat = new Giris { Text = ayar.SabahSaat != "" ? ayar.SabahSaat : "08:30", Width = Tema.S(80), Height = Tema.S(36), Location = new Point(L - Tema.S(80), y), Enabled = saatli.Acik };
-            sabahSaat.Kutu.TextAlign = HorizontalAlignment.Center; sabahSaat.Kutu.MaxLength = 5;
-            saatli.Degisti += (s, e) => { sabahSaat.Enabled = saatli.Acik; sabahSaat.Invalidate(); };
-            Icerik.Controls.Add(saatli); Icerik.Controls.Add(sabahSaat);
 
-            y += Tema.S(48);
-            var u3 = Yazi.UstBaslik("Kapanma uyarısı", Renk.Yazi3); u3.Location = new Point(0, y); Icerik.Controls.Add(u3);
-            y += Tema.S(22);
-            uyari = Satir("Kaç dakika önce uyarsın", ayar.UyariDk, 1, 30, "dk", L, ref y);
-            erteleDk = Satir("Ertele kaç dakika", ayar.ErteleDk, 1, 120, "dk", L, ref y);
-            erteleHak = Satir("Günde en fazla erteleme", ayar.ErteleHak, 0, 10, "kez", L, ref y);
+            // Gelişmiş: uyarı ve erteleme (katlanır)
+            var gelismis = new Buton("Uyarı ve erteleme · " + ayar.UyariDk + " dk önce uyarır, " + ayar.ErteleHak + " kez " + ayar.ErteleDk + " dk ertelenir", Ik.Ayar, ButonTuru.Sade) { Location = new Point(0, y) };
+            Icerik.Controls.Add(gelismis);
+            y += gelismis.Height + Tema.S(6);
+            var gp = new Panel { Location = new Point(0, y), Size = new Size(L, Tema.S(3 * 42)), BackColor = Renk.Zemin, Visible = false };
+            Icerik.Controls.Add(gp);
+            int gy = 0;
+            uyari = Satir(gp, "Kaç dakika önce uyarsın", ayar.UyariDk, 1, 30, "dk", L, ref gy);
+            erteleDk = Satir(gp, "Ertele kaç dakika", ayar.ErteleDk, 1, 120, "dk", L, ref gy);
+            erteleHak = Satir(gp, "Günde en fazla erteleme", ayar.ErteleHak, 0, 10, "kez", L, ref gy);
+            gelismis.Click += (s, e) =>
+            {
+                gp.Visible = !gp.Visible;
+                int fark = gp.Visible ? Math.Max(0, gp.Bottom + Tema.S(90) - Icerik.Height) : -Math.Max(0, ClientSize.Height - Tema.S(640));
+                if (fark != 0) { Height += fark; Top -= fark / 2; }
+            };
 
             // ---------------- Sağ: bilgisayarlar
             var u4 = Yazi.UstBaslik("Bilgisayarlar", Renk.Yazi3); u4.Location = new Point(x2, 0); Icerik.Controls.Add(u4);
-            int kolAc = R - Tema.S(118), kolKapan = R - Tema.S(62);
-            var h1 = Yazi.Etiket("Sabah\naçılsın", 8.5f, true, Renk.Yazi2, false); h1.TextAlign = ContentAlignment.BottomCenter; h1.SetBounds(x2 + kolAc - Tema.S(12), Tema.S(-6), Tema.S(64), Tema.S(32));
-            var h2 = Yazi.Etiket("Otomatik\nkapansın", 8.5f, true, Renk.Yazi2, false); h2.TextAlign = ContentAlignment.BottomCenter; h2.SetBounds(x2 + kolKapan - Tema.S(12), Tema.S(-6), Tema.S(64), Tema.S(32));
-            Icerik.Controls.Add(h1); Icerik.Controls.Add(h2);
-
+            int cw = Tema.S(86), sutunAc = R - Tema.S(18) - 2 * cw - Tema.S(16), sutunKap = R - Tema.S(18) - cw - Tema.S(8);
+            foreach (var (metin, x) in new[] { ("Açılış", sutunAc), ("Kapanış", sutunKap) })
+            {
+                var h = Yazi.Etiket(metin, 8.5f, true, Renk.Yazi2, false); h.TextAlign = ContentAlignment.BottomCenter; h.SetBounds(x2 + x, 0, cw, Tema.S(20)); Icerik.Controls.Add(h);
+            }
             int listeAlt = Icerik.Height - Tema.S(110);
-            var lkart = new KartPanel { Location = new Point(x2, Tema.S(30)), Size = new Size(R, listeAlt - Tema.S(30)), BackColor = Renk.Zemin, Golge = false, Padding = Tema.Pd(2, 8, 2, 8) };
+            var lkart = new KartPanel { Location = new Point(x2, Tema.S(24)), Size = new Size(R, listeAlt - Tema.S(24)), BackColor = Renk.Zemin, Golge = false, Padding = Tema.Pd(2, 8, 2, 8), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left };
             var liste = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Renk.Yuzey };
             lkart.Controls.Add(InceKaydirma.Sar(liste));
             Icerik.Controls.Add(lkart);
             int sy = 0;
-            foreach (var p in pcler.OrderBy(p => Gruplar.Sira(p.Grup)).ThenBy(p => p.Baslik, StringComparer.CurrentCultureIgnoreCase))
+            foreach (var p in pcler.OrderBy(p => yoneticiMi(p) ? 0 : 1).ThenBy(p => Gruplar.Sira(p.Grup)).ThenBy(p => p.Baslik, StringComparer.CurrentCultureIgnoreCase))
             {
-                var sat = new Panel { Location = new Point(0, sy), Size = new Size(R - Tema.S(18), Tema.S(42)), BackColor = Renk.Yuzey };
+                bool yon = yoneticiMi(p);
+                var sat = new Panel { Location = new Point(0, sy), Size = new Size(R - Tema.S(18), Tema.S(44)), BackColor = Renk.Yuzey };
                 var renk = Gruplar.KodRengi(p.Grup);
-                var ad = p.Baslik; var alt = Gruplar.Ad(p.Grup) + (p.Mac == "" ? "  ·  bir kez açılınca sinyal alır" : "");
+                var ad = p.Baslik; var alt = yon ? "Diğerlerini o açar" : Gruplar.Ad(p.Grup) + (p.Mac == "" ? "  ·  bir kez açılınca sinyal alır" : "");
                 sat.Paint += (s, e) =>
                 {
                     var gg = e.Graphics; Tema.Kaliteli(gg);
-                    using (var b = new SolidBrush(renk)) gg.FillEllipse(b, Tema.S(14), Tema.S(17), Tema.S(8), Tema.S(8));
-                    Tema.YaziCiz(gg, ad, Tema.YaziKalin(9.75f), Renk.Yazi, new RectangleF(Tema.S(30), Tema.S(3), kolAc - Tema.S(36), Tema.S(20)));
-                    Tema.YaziCiz(gg, alt, Tema.Yazi(8.25f), Renk.Yazi3, new RectangleF(Tema.S(30), Tema.S(21), kolAc - Tema.S(36), Tema.S(18)));
+                    using (var b = new SolidBrush(renk)) gg.FillEllipse(b, Tema.S(14), Tema.S(18), Tema.S(8), Tema.S(8));
+                    Tema.YaziCiz(gg, ad, Tema.YaziKalin(9.75f), Renk.Yazi, new RectangleF(Tema.S(30), Tema.S(4), sutunAc - Tema.S(36), Tema.S(20)));
+                    Tema.YaziCiz(gg, alt, Tema.Yazi(8.25f), Renk.Yazi3, new RectangleF(Tema.S(30), Tema.S(22), sutunAc - Tema.S(36), Tema.S(18)));
                 };
-                var ac = new IsaretKutusu { Location = new Point(kolAc, Tema.S(6)), Isaretli = !ayar.Acilmayan.Contains(p.Ad) };
-                var kapan = new IsaretKutusu { Location = new Point(kolKapan, Tema.S(6)), Isaretli = !ayar.Kapanmayan.Contains(p.Ad) };
-                sat.Controls.Add(ac); sat.Controls.Add(kapan);
+                string ozel;
+                var mod = new[]
+                {
+                    yon ? "-" : ayar.Acilmayan.Contains(p.Ad) ? "-" : ayar.AcilisOzel.TryGetValue(p.Ad, out ozel) ? ozel : "",
+                    yon && !ayar.YoneticiAyarli ? "-" : ayar.Kapanmayan.Contains(p.Ad) ? "-" : ayar.KapanisOzel.TryGetValue(p.Ad, out ozel) ? ozel : "",
+                };
+                for (int i = 0; i < 2; i++)
+                {
+                    var c = new Buton("", "", ButonTuru.Ikincil) { Location = new Point(i == 0 ? sutunAc : sutunKap, Tema.S(5)) };
+                    int ii = i;
+                    Action yaz = () => { c.Text = mod[ii] == "" ? "Genel" : mod[ii] == "-" ? "Hiç" : mod[ii]; c.BoyutAyarla(); c.Width = cw; };
+                    yaz();
+                    if (yon && i == 0) { c.Text = "—"; c.Enabled = false; }
+                    else c.Click += (s, e) => new AcilirMenu()
+                        .Ekle("Genel (programdaki saat)", Ik.Takvim, () => { mod[ii] = ""; yaz(); })
+                        .Ekle("Özel saat…", Ik.Saat, () => { var t = SaatForm.Sor(this, ad + (ii == 0 ? " · açılış" : " · kapanış"), mod[ii].Contains(":") ? mod[ii] : ii == 0 ? "08:30" : "18:00"); if (t != null) { mod[ii] = t; yaz(); } })
+                        .Ekle(ii == 0 ? "Hiç (sabah açılmasın)" : "Hiç (otomatik kapanmasın)", Ik.Duraklat, () => { mod[ii] = "-"; yaz(); })
+                        .Goster(c, false);
+                    sat.Controls.Add(c);
+                }
                 liste.Controls.Add(sat);
-                satirlar.Add((p, ac, kapan));
-                sy += Tema.S(44);
+                satirlar.Add((p, mod));
+                sy += Tema.S(46);
             }
             if (pcler.Count == 0)
             {
                 var bos = Yazi.Etiket("Henüz bilgisayar yok.", 10f, false, Renk.Yazi3); bos.BackColor = Renk.Yuzey; bos.Location = Tema.P(16, 12); liste.Controls.Add(bos);
             }
-            var n2 = Yazi.Etiket("Bu bilgisayar listede yok: açma sinyalini o gönderir, otomatik kapanmaz. Kapalı olan bilgisayarlara ayarlar açıldıklarında uygulanır.", 9f, false, Renk.Yazi3, false);
-            n2.SetBounds(x2, listeAlt + Tema.S(8), R, Tema.S(40)); Icerik.Controls.Add(n2);
+            var n2 = Yazi.Etiket("Özel saat, açık günlerin hepsinde geçerli. Saatli açma için Müdür o saatte açık olmalı. Kapalı bilgisayarlara ayarlar açıldıklarında uygulanır.", 9f, false, Renk.Yazi3, false);
+            n2.SetBounds(x2, listeAlt + Tema.S(6), R, Tema.S(48)); n2.Anchor = AnchorStyles.Bottom | AnchorStyles.Left; Icerik.Controls.Add(n2);
 
             var ok = Diyalog.AltDugmeler(this, "Kaydet", ButonTuru.Birincil, Ik.Tik);
             ok.Click += (s, e) => Kaydet();
         }
 
-        Adim Satir(string etiket, int deger, int min, int max, string birim, int L, ref int y)
+        Giris SaatKutusu(string metin, Point yer, bool etkin, string ipucu)
+        {
+            var k = new Giris { Text = metin, Width = Tema.S(76), Height = Tema.S(34), Location = yer, Enabled = etkin };
+            if (ipucu != "") k.Ipucu = ipucu;
+            k.Kutu.TextAlign = HorizontalAlignment.Center; k.Kutu.MaxLength = 5;
+            return k;
+        }
+
+        Adim Satir(Panel kap, string etiket, int deger, int min, int max, string birim, int L, ref int y)
         {
             var l = Yazi.Etiket(etiket, 10f); l.Location = new Point(0, y + Tema.S(8));
-            var a = new Adim(min, max, deger, birim) { Location = new Point(L - Tema.S(130), y) };
-            Icerik.Controls.Add(l); Icerik.Controls.Add(a);
+            var a = new Adim(min, max, deger, birim); a.Location = new Point(L - a.Width, y);
+            kap.Controls.Add(l); kap.Controls.Add(a);
             y += Tema.S(42);
             return a;
         }
@@ -322,20 +358,62 @@ namespace Sem.Yonetici
         {
             TimeSpan t;
             for (int d = 0; d < 7; d++)
-                if (gun[d].Acik && (!TimeSpan.TryParse(saat[d].Text, out t) || t.TotalHours >= 24)) { MesajKutusu.Bilgi(this, "Saat hatalı", AjanAyar.GunAd[d] + " için saati 18:00 biçiminde yazın.", true); return; }
-            if (saatli.Acik && (!TimeSpan.TryParse(sabahSaat.Text, out t) || t.TotalHours >= 24)) { MesajKutusu.Bilgi(this, "Saat hatalı", "Sabah açılma saatini 08:30 biçiminde yazın.", true); return; }
-            for (int d = 0; d < 7; d++) ayar.Kapanma[d] = gun[d].Acik ? TimeSpan.Parse(saat[d].Text).ToString(@"hh\:mm") : "";
+            {
+                if (!gun[d].Acik) continue;
+                if (!TimeSpan.TryParse(kapSaat[d].Text, out t) || t.TotalHours >= 24) { MesajKutusu.Bilgi(this, "Saat hatalı", AjanAyar.GunAd[d] + " kapanış saatini 18:00 biçiminde yazın.", true); return; }
+                if (acSaat[d].Text.Trim() != "" && (!TimeSpan.TryParse(acSaat[d].Text, out t) || t.TotalHours >= 24)) { MesajKutusu.Bilgi(this, "Saat hatalı", AjanAyar.GunAd[d] + " açılış saatini 08:30 biçiminde yazın ya da boş bırakın.", true); return; }
+            }
+            for (int d = 0; d < 7; d++)
+            {
+                ayar.Kapanma[d] = gun[d].Acik ? TimeSpan.Parse(kapSaat[d].Text).ToString(@"hh\:mm") : "";
+                ayar.Acilis[d] = gun[d].Acik && acSaat[d].Text.Trim() != "" ? TimeSpan.Parse(acSaat[d].Text).ToString(@"hh\:mm") : "";
+            }
             ayar.AcilistaAc = acilista.Acik;
-            ayar.SabahSaat = saatli.Acik ? TimeSpan.Parse(sabahSaat.Text).ToString(@"hh\:mm") : "";
+            ayar.SabahSaat = "";
             ayar.UyariDk = uyari.Deger; ayar.ErteleDk = erteleDk.Deger; ayar.ErteleHak = erteleHak.Deger;
             foreach (var x in satirlar)
             {
-                if (x.Ac.Isaretli) ayar.Acilmayan.Remove(x.Pc.Ad); else ayar.Acilmayan.Add(x.Pc.Ad);
-                if (x.Kapan.Isaretli) ayar.Kapanmayan.Remove(x.Pc.Ad); else ayar.Kapanmayan.Add(x.Pc.Ad);
+                var ad = x.Pc.Ad;
+                ayar.Acilmayan.Remove(ad); ayar.AcilisOzel.Remove(ad); ayar.Kapanmayan.Remove(ad); ayar.KapanisOzel.Remove(ad);
+                if (x.Mod[0] == "-") ayar.Acilmayan.Add(ad); else if (x.Mod[0] != "") ayar.AcilisOzel[ad] = x.Mod[0];
+                if (x.Mod[1] == "-") ayar.Kapanmayan.Add(ad); else if (x.Mod[1] != "") ayar.KapanisOzel[ad] = x.Mod[1];
+                if (yoneticiMi(x.Pc)) { ayar.Acilmayan.Remove(ad); ayar.AcilisOzel.Remove(ad); ayar.YoneticiAyarli = true; }
             }
             ayar.AcKapTanimli = true;
-            ayar.Sabah = ayar.AcilistaAc || ayar.SabahSaat != "";
+            ayar.Sabah = ayar.AcilistaAc || ayar.Acilis.Any(x => x != "") || ayar.AcilisOzel.Count > 0;
             DialogResult = DialogResult.OK; Close();
+        }
+    }
+
+    /// <summary>Tek bir saat sorar (ör. bilgisayara özel açılış saati).</summary>
+    class SaatForm : ModernForm
+    {
+        readonly Giris kutu;
+        public string Saat;
+
+        SaatForm(string baslik, string saat) : base("Özel saat", 380, 250)
+        {
+            int g = Icerik.Width;
+            var a = Yazi.Etiket(baslik, 10f, true, Renk.Yazi, false); a.SetBounds(0, 0, g, Tema.S(24)); a.AutoEllipsis = true;
+            var b = Yazi.Etiket("Açık günlerin hepsinde bu saat kullanılır.", 9f, false, Renk.Yazi3, false); b.SetBounds(0, Tema.S(26), g, Tema.S(20));
+            kutu = new Giris { Text = saat, Width = Tema.S(110), Height = Tema.S(38), Location = new Point(0, Tema.S(56)) };
+            kutu.Kutu.TextAlign = HorizontalAlignment.Center; kutu.Kutu.MaxLength = 5;
+            Icerik.Controls.AddRange(new Control[] { a, b, kutu });
+            var ok = Diyalog.AltDugmeler(this, "Tamam", ButonTuru.Birincil, Ik.Tik);
+            Action tamam = () =>
+            {
+                TimeSpan t;
+                if (!TimeSpan.TryParse(kutu.Text.Trim(), out t) || t.TotalHours >= 24) { MesajKutusu.Bilgi(this, "Saat hatalı", "Saati 08:30 biçiminde yazın.", true); return; }
+                Saat = t.ToString(@"hh\:mm"); DialogResult = DialogResult.OK; Close();
+            };
+            ok.Click += (s, e) => tamam();
+            kutu.Kutu.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; tamam(); } };
+            Shown += (s, e) => { kutu.Kutu.Focus(); kutu.Kutu.SelectAll(); };
+        }
+
+        public static string Sor(IWin32Window sahip, string baslik, string saat)
+        {
+            using (var f = new SaatForm(baslik, saat)) return f.ShowDialog(sahip) == DialogResult.OK ? f.Saat : null;
         }
     }
 

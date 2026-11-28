@@ -1313,7 +1313,8 @@ namespace Sem.Yonetici
         /// <summary>Günler, kapanma saatleri, sabah açılma ve her bilgisayarın açılsın/kapansın seçimi tek ekranda.</summary>
         void AcilisKapanis()
         {
-            List<Pc> liste; lock (pcKilit) liste = pcler.Where(p => !YoneticiPc(p)).ToList();
+            List<Pc> tum; lock (pcKilit) tum = pcler.ToList();
+            var liste = tum.Where(p => !YoneticiPc(p)).ToList();
             var a = YonetimAyar.Oku();
             if (!a.AcKapTanimli)
             {
@@ -1328,15 +1329,17 @@ namespace Sem.Yonetici
                     if (int.TryParse(ornek["ertele_hak"], out n)) a.ErteleHak = n;
                 }
                 foreach (var p in liste.Where(p => p.SonDurum != null && p.SonDurum["otomatik"] == "0")) a.Kapanmayan.Add(p.Ad);
-                var bu = BuPc()?.SonDurum; if (bu != null) a.SabahSaat = bu["sabah_saat"];
+                var bu = BuPc()?.SonDurum;
+                if (bu != null && bu["sabah_saat"] != "") for (int g = 0; g < 7; g++) a.Acilis[g] = a.Kapanma[g] != "" ? bu["sabah_saat"] : "";
             }
-            using (var f = new AcKapForm(a, liste))
+            using (var f = new AcKapForm(a, tum, YoneticiPc))
             {
                 if (f.ShowDialog(this) != DialogResult.OK) return;
                 // Görünen özellikler (Ayarlar) bu arada değişmiş olabilir; yalnızca açılış/kapanış alanları alınır.
                 var y = YonetimAyar.Oku();
                 y.AcKapTanimli = true; y.Kapanma = a.Kapanma; y.UyariDk = a.UyariDk; y.ErteleDk = a.ErteleDk; y.ErteleHak = a.ErteleHak;
                 y.AcilistaAc = a.AcilistaAc; y.SabahSaat = a.SabahSaat; y.Acilmayan = a.Acilmayan; y.Kapanmayan = a.Kapanmayan; y.Sabah = a.Sabah;
+                y.Acilis = a.Acilis; y.AcilisOzel = a.AcilisOzel; y.KapanisOzel = a.KapanisOzel; y.YoneticiAyarli = a.YoneticiAyarli;
                 y.Yaz(); ayarlar = y;
                 OzellikleriUygula();
                 Kaydet("Açılış ve kapanış ayarları kaydedildi", 1);
@@ -1352,27 +1355,35 @@ namespace Sem.Yonetici
         {
             if (!a.AcKapTanimli) return null;
             var m = new Mesaj("SABAH_PLANI");
-            m["saat"] = a.SabahSaat; m["gunler"] = a.AcikGunler; m["acilis"] = a.AcilistaAc ? "1" : "0";
-            m["macler"] = (a.AcilistaAc || a.SabahSaat != "")
-                ? string.Join(";", kopya.Where(p => !YoneticiPc(p) && p.Mac != "" && !a.Acilmayan.Contains(p.Ad)).Select(p => p.Mac).Distinct().OrderBy(x => x))
+            m["saat"] = ""; m["gunler"] = a.AcikGunler; m["acilis"] = a.AcilistaAc ? "1" : "0";
+            m["saatler"] = string.Join(",", Enumerable.Range(0, 7).Where(g => a.Kapanma[g] != "" && a.Acilis[g] != "").Select(g => g + "=" + a.Acilis[g]));
+            bool saatli = m["saatler"] != "" || a.AcilisOzel.Count > 0;
+            // Özel saati olan bilgisayar "MAC@08:30" olarak gider; o bilgisayar her açık gün kendi saatinde açılır
+            m["macler"] = (a.AcilistaAc || saatli)
+                ? string.Join(";", kopya.Where(p => !YoneticiPc(p) && p.Mac != "" && !a.Acilmayan.Contains(p.Ad))
+                    .Select(p => p.Mac + (a.AcilisOzel.TryGetValue(p.Ad, out var o) ? "@" + o : "")).Distinct().OrderBy(x => x))
                 : "";
-            return new AcKapPlan { Sabah = m, Imza = m["saat"] + "|" + m["gunler"] + "|" + m["macler"] + "|" + m["acilis"] };
+            return new AcKapPlan { Sabah = m, Imza = m["saat"] + "|" + m["gunler"] + "|" + m["macler"] + "|" + m["acilis"] + "|" + m["saatler"] };
         }
 
         void AcKapEsitle(YonetimAyar a, AcKapPlan plan, Pc p, Mesaj d)
         {
             if (d.Alan.ContainsKey("sabah_acilis"))
             {
-                var imza = d["sabah_saat"] + "|" + d["sabah_gunler"] + "|" + d["sabah_macler"] + "|" + d["sabah_acilis"];
+                var imza = d["sabah_saat"] + "|" + d["sabah_gunler"] + "|" + d["sabah_macler"] + "|" + d["sabah_acilis"] + "|" + d["sabah_saatler"];
                 if (imza != plan.Imza) try { Baglanti.Gonder(p.Ip, plan.Sabah, 4000); } catch { }
             }
-            if (YoneticiPc(p) || !d.Alan.ContainsKey("kapanma_pzt")) return;
+            if (!d.Alan.ContainsKey("kapanma_pzt")) return;
+            // Müdür bilgisayarına, bu ekrandan kapanışı ayarlanmadıysa dokunulmaz (kapanmaz)
+            if (YoneticiPc(p) && !a.YoneticiAyarli) return;
             string oto = a.Kapanmayan.Contains(p.Ad) ? "0" : "1";
+            // Bilgisayara özel kapanma saati varsa açık günlerin hepsinde o; "Hiç" ise gün ayarı korunur, otomatik kapanma kapalı
+            Func<int, string> saat = g => a.Kapanma[g] == "" ? "" : a.KapanisOzel.TryGetValue(p.Ad, out var o) && oto == "1" ? o : a.Kapanma[g];
             bool farkli = d["otomatik"] != oto || d["uyari_dk"] != a.UyariDk.ToString() || d["ertele_dk"] != a.ErteleDk.ToString() || d["ertele_hak"] != a.ErteleHak.ToString();
-            for (int g = 0; g < 7; g++) if (d["kapanma_" + AjanAyar.GunKod[g]] != a.Kapanma[g]) farkli = true;
+            for (int g = 0; g < 7; g++) if (d["kapanma_" + AjanAyar.GunKod[g]] != saat(g)) farkli = true;
             if (!farkli) return;
             var m = new Mesaj("AYAR");
-            for (int g = 0; g < 7; g++) m["kapanma_" + AjanAyar.GunKod[g]] = a.Kapanma[g];
+            for (int g = 0; g < 7; g++) m["kapanma_" + AjanAyar.GunKod[g]] = saat(g);
             m["uyari_dk"] = a.UyariDk.ToString(); m["ertele_dk"] = a.ErteleDk.ToString(); m["ertele_hak"] = a.ErteleHak.ToString(); m["otomatik"] = oto;
             try { if (Baglanti.Gonder(p.Ip, m, 4000).Tamam) Kaydet(p.Baslik + ": açılış ve kapanış ayarları uygulandı", 1); } catch { }
         }

@@ -171,6 +171,23 @@ namespace Sem.Yonetici
         public string SabahSaat = "";       // ayrıca belirli saatte (ana bilgisayar açıksa)
         public HashSet<string> Acilmayan = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Kapanmayan = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public string[] Acilis = { "", "", "", "", "", "", "" };   // gün gün sabah açılma saati; "" = o gün saatle açılmaz
+        // Bilgisayara özel saat (bütün açık günlerde geçerli); yoksa programdaki saat
+        public Dictionary<string, string> AcilisOzel = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> KapanisOzel = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public bool YoneticiAyarli;          // Müdür bilgisayarının kapanışı bu ekrandan ayarlandı mı (yoksa dokunulmaz)
+
+        /// <summary>Bu bilgisayarın o günkü kapanma saati: merkez kapalıysa ya da "Hiç" ise boş.</summary>
+        public string KapanisSaati(string pc, int gun) =>
+            Kapanma[gun] == "" || Kapanmayan.Contains(pc) ? "" : KapanisOzel.TryGetValue(pc, out var o) ? o : Kapanma[gun];
+
+        static Dictionary<string, string> SozlukOku(string v)
+        {
+            var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var x in v.Split(';')) { var p = x.Split('|'); if (p.Length == 2 && p[0] != "" && p[1] != "") d[p[0]] = p[1]; }
+            return d;
+        }
+        static string SozlukYaz(Dictionary<string, string> d) => string.Join(";", d.Select(x => x.Key + "|" + x.Value));
 
         /// <summary>Merkezin açık olduğu günler (DayOfWeek): kapanma saati olan günler.</summary>
         public string AcikGunler => string.Join(",", Enumerable.Range(0, 7).Where(g => Kapanma[g] != ""));
@@ -198,6 +215,13 @@ namespace Sem.Yonetici
                 if (d.TryGetValue("sabah_saat", out u)) a.SabahSaat = u;
                 if (d.TryGetValue("acilmayan", out u)) foreach (var x in u.Split(';').Where(x => x != "")) a.Acilmayan.Add(x);
                 if (d.TryGetValue("kapanmayan", out u)) foreach (var x in u.Split(';').Where(x => x != "")) a.Kapanmayan.Add(x);
+                bool gunlukVar = false;
+                for (int g = 0; g < 7; g++) if (d.TryGetValue("acilis_" + AjanAyar.GunKod[g], out var k)) { a.Acilis[g] = k; gunlukVar = true; }
+                // Eski tek saatli ayar: açık günlerin hepsine dağıtılır
+                if (!gunlukVar && a.SabahSaat != "") for (int g = 0; g < 7; g++) if (a.Kapanma[g] != "") a.Acilis[g] = a.SabahSaat;
+                if (d.TryGetValue("acilis_ozel", out u)) a.AcilisOzel = SozlukOku(u);
+                if (d.TryGetValue("kapanis_ozel", out u)) a.KapanisOzel = SozlukOku(u);
+                a.YoneticiAyarli = b("yonetici_ayarli", false);
             }
             catch { }
             return a;
@@ -215,6 +239,8 @@ namespace Sem.Yonetici
                     "uyari_dk=" + UyariDk, "ertele_dk=" + ErteleDk, "ertele_hak=" + ErteleHak,
                     "acilmayan=" + string.Join(";", Acilmayan), "kapanmayan=" + string.Join(";", Kapanmayan) };
                 for (int g = 0; g < 7; g++) l.Add("kapanma_" + AjanAyar.GunKod[g] + "=" + Kapanma[g]);
+                for (int g = 0; g < 7; g++) l.Add("acilis_" + AjanAyar.GunKod[g] + "=" + Acilis[g]);
+                l.Add("acilis_ozel=" + SozlukYaz(AcilisOzel)); l.Add("kapanis_ozel=" + SozlukYaz(KapanisOzel)); l.Add("yonetici_ayarli=" + b(YoneticiAyarli));
                 File.WriteAllLines(Dosya_, l);
             }
             catch { }

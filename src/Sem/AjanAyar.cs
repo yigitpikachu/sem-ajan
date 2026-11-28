@@ -36,6 +36,7 @@ namespace Sem.Ajan
         // Sabah açılma: bu bilgisayar açıksa, belirtilen saatte listedeki bilgisayarlara açma sinyali gönderir.
         public string SabahSaat = "";       // "08:30"; boşsa kapalı
         public string SabahGunler = "2,3,4,5,6"; // DayOfWeek (0 = Pazar)
+        public string SabahSaatler = "";    // gün gün saat: "2=08:30,3=08:30"; boşsa SabahSaat her açık gün
         public string SabahMacler = "";     // "AA-BB-..;CC-DD-.."
         public bool SabahAcilis;            // yönetici bilgisayarı: günün ilk açılışında listedekilere açma sinyali
         public string SabahAcilisTarih = ""; // o gün gönderildi mi (yyyy-MM-dd)
@@ -85,6 +86,7 @@ namespace Sem.Ajan
             if (d.TryGetValue("oto_guncelle", out v)) a.OtoGuncelle = v != "0";
             if (d.TryGetValue("sabah_saat", out v)) a.SabahSaat = v;
             if (d.TryGetValue("sabah_gunler", out v)) a.SabahGunler = v;
+            if (d.TryGetValue("sabah_saatler", out v)) a.SabahSaatler = v;
             if (d.TryGetValue("sabah_macler", out v)) a.SabahMacler = v;
             if (d.TryGetValue("sabah_acilis", out v)) a.SabahAcilis = v == "1";
             if (d.TryGetValue("sabah_acilis_tarih", out v)) a.SabahAcilisTarih = v;
@@ -127,6 +129,7 @@ namespace Sem.Ajan
             sb.AppendLine("oto_guncelle=" + (OtoGuncelle ? "1" : "0"));
             sb.AppendLine("sabah_saat=" + SabahSaat);
             sb.AppendLine("sabah_gunler=" + SabahGunler);
+            sb.AppendLine("sabah_saatler=" + SabahSaatler);
             sb.AppendLine("sabah_macler=" + SabahMacler);
             sb.AppendLine("sabah_acilis=" + (SabahAcilis ? "1" : "0"));
             sb.AppendLine("sabah_acilis_tarih=" + SabahAcilisTarih);
