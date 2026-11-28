@@ -107,8 +107,34 @@ namespace Sem.Ajan
             var m = new ContextMenuStrip();
             m.Items.Add("Dosya gönder…", null, (s, e) => PaylasAc());
             m.Items.Add("Sem Dosyalar klasörünü aç", null, (s, e) => KlasorAc(kokKlasor));
+            m.Items.Add(new ToolStripSeparator());
+            m.Items.Add("Sorun bildir…", null, (s, e) => SorunAc());
             tepsi.ContextMenuStrip = m;
             tepsi.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) PaylasAc(); };
+        }
+
+        /// <summary>Ekran görüntüsü pencere açılmadan önce alınır (pencerenin kendisi görünmesin).</summary>
+        void SorunAc()
+        {
+            if (SorunForm.Acik != null) { SorunForm.Acik.Activate(); return; }
+            string resim = "";
+            try
+            {
+                var b = Screen.PrimaryScreen.Bounds;
+                int w = Math.Min(1600, b.Width), h = (int)Math.Round(b.Height * (double)w / b.Width);
+                using (var ham = new Bitmap(b.Width, b.Height))
+                using (var kucuk = new Bitmap(w, h))
+                using (var ms = new MemoryStream())
+                {
+                    using (var g = Graphics.FromImage(ham)) g.CopyFromScreen(b.Location, Point.Empty, b.Size);
+                    using (var g = Graphics.FromImage(kucuk)) { g.InterpolationMode = InterpolationMode.HighQualityBilinear; g.DrawImage(ham, new Rectangle(0, 0, w, h)); }
+                    var jpeg = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
+                    using (var ep = new EncoderParameters(1)) { ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 70L); kucuk.Save(ms, jpeg, ep); }
+                    resim = Convert.ToBase64String(ms.ToArray());
+                }
+            }
+            catch { }
+            new SorunForm(this, resim).Show();
         }
 
         void Dongu()
@@ -169,6 +195,9 @@ namespace Sem.Ajan
                 case "VARSAYILAN_YAZICI":
                     // Yazıcıyı sabitle: Canon bu kullanıcının varsayılan yazıcısı olsun
                     try { if (p.Length > 1 && p[1] != "" && VarsayilanYazici() != p[1]) SetDefaultPrinter(p[1]); } catch { }
+                    break;
+                case "SORUN_SONUC":
+                    SorunForm.Acik?.Sonuc(p.Length > 1 && p[1] == "1");
                     break;
                 case "IPTAL_SONUC":
                     uyari?.IptalSonucu(p[1] == "1");

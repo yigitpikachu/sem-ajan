@@ -375,10 +375,8 @@ namespace Sem.Yonetici
             if (Padding != pd) Padding = pd;
             if (pencereDugmeleri != null) { pencereDugmeleri.Location = new Point(ClientSize.Width - Padding.Right - pencereDugmeleri.Width, Padding.Top); pencereDugmeleri.Invalidate(); }
             if (dwmYuvarlak) return;
-            // Windows 10: pencere yuvarlak şekle kesilir, kenar çizgisi yumuşatılarak çizilir
-            if (tam || WindowState == FormWindowState.Minimized) { Region = null; return; }
-            // Kavis kenar payının (5 px) içinde kalsın: köşeyi pencerenin kendisi yumuşak çizgiyle boyar, içerik kesilmez.
-            using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width, Height), KoseYaricap + 1)) { var eski = Region; Region = new Region(p); eski?.Dispose(); }
+            // Windows 10: sahte yuvarlatma yok, pencere düz köşeli
+            if (Region != null) { var eski = Region; Region = null; eski.Dispose(); }
         }
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); MaximizedBounds = Screen.FromHandle(Handle).WorkingArea; KoseleriAyarla(); }
@@ -394,9 +392,8 @@ namespace Sem.Yonetici
             using (var b = new SolidBrush(Renk.YanMenu)) g.FillRectangle(b, 0, 0, yan.Right, Height);
             Tema.Kaliteli(g);
             if (dwmYuvarlak) return; // Windows 11 kenarı kendi çizer
-            // Windows 10: kesik kenarın basamaklarını yumuşatan ince, kenar yumuşatmalı çizgi
-            using (var pen = new Pen(Color.FromArgb(150, Renk.CizgiKoyu), 1.2f))
-            using (var p = Tema.Yuvarlak(new RectangleF(0.6f, 0.6f, Width - 1.6f, Height - 1.6f), KoseYaricap)) g.DrawPath(pen, p);
+            // Windows 10: düz, ince kenar çizgisi
+            Tema.PencereKenari(g, Width, Height, false, 0);
         }
 
         protected override void WndProc(ref Message m)
@@ -684,12 +681,55 @@ namespace Sem.Yonetici
             if (ayarlar.Yazici) m.Ekle("Yazıcı kur", Ik.Yazici, () => Guvenli(YaziciKur)).Ekle("Yazıcıyı onar", Ik.Anahtar_, () => Guvenli(YaziciOnar)).Ekle("Yazıcıyı sabitle", Ik.Kalkan, () => Guvenli(YaziciSabitle));
             if (ayarlar.Program) m.Ekle("Program ekle/kaldır", Ik.ProgramEkle, () => Guvenli(ProgramKur));
             m.Ekle("Masaüstü düzeni", Ik.Firca, () => Guvenli(MasaustuDuzeni));
+            if (ayarlar.Yazici) m.Ekle("Baskı ve toner", Ik.YaziciIk, () => Guvenli(() => { List<Pc> h; lock (pcKilit) h = pcler.ToList(); using (var f = new BaskiForm(AcikHedefler(true), Izleme.YoneticiBul(h))) f.ShowDialog(this); }));
+            m.Ekle("İnternet ve ağ", Ik.Kopuk, () => Guvenli(() => { List<Pc> h; lock (pcKilit) h = pcler.ToList(); using (var f = new AgForm(Izleme.YoneticiBul(h), h)) f.ShowDialog(this); }));
+            m.Ekle("Sorun bildirimleri", Ik.Sohbet, () => Guvenli(SorunlariAc));
             m.Ekle("Lisanslar", Ik.Kalkan, () => Guvenli(() => { var h = AcikHedefler(true); if (h.Count == 0) Tost("Açık bilgisayar yok."); else using (var f = new LisansForm(h)) f.ShowDialog(this); }));
             m.Ekle("Dosyadan güncelle", Ik.Esitle, () => Guvenli(SemGuncelle)).Ayrac()
              .Ekle("Bekleyen kapatmayı iptal et", Ik.KapatDaire, () => Guvenli(KapatmayiIptal))
              .Ekle("Hemen kapat", Ik.Guc, () => Guvenli(HemenKapat), true)
              .Ekle("Listeden çıkar", Ik.Sil, () => Guvenli(ListedenCikar), true);
             return m;
+        }
+
+        // ------------------------------------------------------------------ İzleme uyarıları
+        string sonInternet = null, tonerUyariGunu = "";
+        readonly HashSet<string> bildirilenCihaz = new HashSet<string>();
+        bool radarIlk = true;
+
+        void SorunlariAc() { using (var f = new SorunlarForm()) f.ShowDialog(this); }
+
+        void SorunGeldi(string pc, string not)
+        {
+            Kaydet(pc + " sorun bildirdi: " + not, 2);
+            try
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    try { new Sem.Ajan.BildirimForm(pc + " sorun bildirdi", not, Ik.Sohbet, Renk.Pembe, () => Guvenli(SorunlariAc)).Show(); } catch { }
+                    if (!Visible) try { tepsi.ShowBalloonTip(6000, pc + " sorun bildirdi", not, ToolTipIcon.Warning); } catch { }
+                }));
+            }
+            catch { }
+        }
+
+        /// <summary>Müdür bilgisayarının DURUM'undaki internet, ağ radarı ve toner bilgileri.</summary>
+        void IzlemeUyarilari(Mesaj d)
+        {
+            var net = d["internet"];
+            if (sonInternet != null && net != sonInternet)
+            {
+                if (net.StartsWith("0")) Kaydet("İnternet kesildi", 2);
+                else if (sonInternet.StartsWith("0")) Kaydet("İnternet geri geldi", 1);
+            }
+            sonInternet = net;
+            var yeni = d["radar_yeni"].Split(',').Where(x => x != "").ToList();
+            int eklenen = 0;
+            lock (bildirilenCihaz) foreach (var m in yeni) if (bildirilenCihaz.Add(m) && !radarIlk) eklenen++;
+            if (radarIlk) { radarIlk = false; if (yeni.Count > 0) Kaydet("Ağda tanınmayan " + yeni.Count + " cihaz var (Diğer > İnternet ve ağ)", 0); }
+            else if (eklenen > 0) { Kaydet("Ağa yeni bir cihaz bağlandı (Diğer > İnternet ve ağ)", 2); Tost("Ağa yeni bir cihaz bağlandı. Diğer > İnternet ve ağ'dan bakabilirsiniz."); }
+            var tu = d["toner_uyari"]; var bugun = DateTime.Today.ToString("yyyy-MM-dd");
+            if (tu != "" && tonerUyariGunu != bugun) { tonerUyariGunu = bugun; Kaydet(tu + " (Diğer > Baskı ve toner)", 2); Tost(tu + ". Yedek toner hazırlayın."); }
         }
 
         // ------------------------------------------------------------------ Giriş
@@ -769,6 +809,9 @@ namespace Sem.Yonetici
                             }
                             // Açılış ve kapanış ayarları (tek ekrandan) her bilgisayara; kapalı olanlara açılınca
                             if (plan != null) AcKapEsitle(acKap, plan, p, d);
+                            // Öğretmenden gelen sorun bildirimi
+                            if (d["sorun"] != "") foreach (var not in Izleme.SorunlariAl(p, d["sorun"])) SorunGeldi(p.Baslik, not);
+                            if (d["yonetici"] == "1" && d.Alan.ContainsKey("internet")) IzlemeUyarilari(d);
                             // Yeni sağlık uyarısı Etkinlik'e düşsün
                             var sg = d["saglik"];
                             if (sg != p.SonSaglik)

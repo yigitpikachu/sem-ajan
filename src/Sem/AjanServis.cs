@@ -84,6 +84,7 @@ namespace Sem.Ajan
             paylasim = new Paylasim(this);
             try { paylasim.Baslat(); } catch (Exception e) { Gunluk.Yaz("Paylaşım: " + e.Message); }
             zamanlayici = new Timer(_ => Tik(), null, 3000, 5000);
+            ThreadPool.QueueUserWorkItem(_ => BaskiDefteri.Etkinlestir());
             Gunluk.Yaz("Hizmet başladı, sürüm " + Sabitler.Surum);
         }
 
@@ -108,6 +109,13 @@ namespace Sem.Ajan
             try { YaziciKilitKontrol(); } catch (Exception e) { Gunluk.Yaz("Yazıcı kilidi: " + e.Message); }
             try { paylasim?.OrtakKontrol(); } catch (Exception e) { Gunluk.Yaz("Ortak: " + e.Message); }
             try { KilitTasarimi(); } catch { }
+            if (ayar.Yonetici)
+            {
+                // Yalnızca yönetici bilgisayarı: internet karnesi, ağ radarı, yazıcı sayacı
+                try { InternetKarnesi.Tik(); } catch { }
+                try { AgRadari.Tik(); } catch { }
+                try { TonerIzleme.Denetle(ayar.YaziciIp); TonerIzleme.UyariTazele(ayar.YaziciIp); } catch { }
+            }
             lock (kilit) if (uzakSon != DateTime.MinValue && (DateTime.Now - uzakSon).TotalSeconds > 8) { uzakSon = DateTime.MinValue; EkranaGonder("UZAK", "0"); }
             Saglik.Denetle();
         }
@@ -358,6 +366,18 @@ namespace Sem.Ajan
                         }
                     }
                     break;
+                case "SORUN":
+                {
+                    string not = p.Length > 1 ? p[1] : "", resim = p.Length > 2 ? p[2] : "", kim = p.Length > 3 ? p[3] : "", ip;
+                    lock (kilit) ip = ayar.YaziciIp;
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        bool ok = true;
+                        try { SorunBildir.Kaydet(not, resim, kim, ip); } catch (Exception e) { ok = false; Gunluk.Yaz("Sorun bildir: " + e.Message); }
+                        EkranaGonder("SORUN_SONUC", ok ? "1" : "0");
+                    });
+                    break;
+                }
                 case "IPTAL":
                     bool dogru = p.Length > 1 && ayar.Anahtar != null && Sifreleme.Esit(Sifreleme.AnahtarUret(p[1]), ayar.Anahtar);
                     if (dogru)
@@ -614,6 +634,14 @@ namespace Sem.Ajan
                 }
 
                 case "DOSYA_LISTE": return DosyaListe(m["yol"]);
+                case "BASKI_DEFTERI": { int g; if (!int.TryParse(m["gun"], out g)) g = 62; return BaskiDefteri.Oku(g); }
+                case "TONER_DURUM": return TonerIzleme.Ozet(ayar.YaziciIp);
+                case "TONER_DEGISTI": return TonerIzleme.Degisti(ayar.YaziciIp);
+                case "INTERNET_KARNE": return InternetKarnesi.Karne(m["ay"]);
+                case "RADAR_LISTE": return AgRadari.Liste();
+                case "RADAR_DEGISTIR": return AgRadari.Degistir(m["islem"], m["mac"], m["ad"]);
+                case "SORUN_AL": return SorunBildir.Al(m["id"]);
+                case "SORUN_SIL": return SorunBildir.Sil(m["id"]);
 
                 case "MASAUSTU_TARA":
                 {
@@ -732,6 +760,12 @@ namespace Sem.Ajan
             r["yazici_kilit"] = ayar.YaziciKilit ? "1" : "0";
             r["saglik"] = Saglik.Ozet();
             r["paylasim"] = ayar.Paylasim ? "1" : "0"; r["telefon"] = ayar.Telefon ? "1" : "0"; r["yonetici"] = ayar.Yonetici ? "1" : "0";
+            r["sorun"] = SorunBildir.Bekleyenler();
+            if (ayar.Yonetici)
+            {
+                r["radar_yeni"] = AgRadari.YeniOzet(); r["toner_uyari"] = TonerIzleme.Uyari;
+                r["internet"] = InternetKarnesi.Acik ? "1" : "0|" + Satir.Zaman(InternetKarnesi.KesikSince);
+            }
             lock (okunan) r["okunan"] = string.Join(";", okunan.Skip(Math.Max(0, okunan.Count - 50)));
             return r;
         }

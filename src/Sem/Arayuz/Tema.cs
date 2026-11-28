@@ -194,6 +194,16 @@ namespace Sem.Arayuz
             try { int v = 2; return DwmSetWindowAttribute(h, 33, ref v, 4) == 0; } catch { return false; }
         }
 
+        /// <summary>Kenarlıksız pencerenin kenar çizgisi: Windows 11'de sistemin yuvarlak köşesine uyar, Windows 10'da düz dikdörtgen.</summary>
+        public static void PencereKenari(Graphics g, int w, int h, bool yuvarlak, float yaricap)
+        {
+            using (var pen = new Pen(Renk.CizgiKoyu))
+            {
+                if (yuvarlak) { Kaliteli(g); using (var p = Yuvarlak(new RectangleF(0, 0, w - 1, h - 1), yaricap)) g.DrawPath(pen, p); }
+                else { var eski = g.SmoothingMode; g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None; g.DrawRectangle(pen, 0, 0, w - 1, h - 1); g.SmoothingMode = eski; }
+            }
+        }
+
         /// <summary>Kenarlıksız, boyutlandırılabilir pencerede kenara yakın noktayı boyutlandırma koduna çevirir (WM_NCHITTEST).</summary>
         public static int KenarBul(Form f, Point ekran, int sonuc, int k)
         {

@@ -423,16 +423,14 @@ namespace Sem.Arayuz
 
         void BolgeAyarla()
         {
-            if (dwmYuvarlak) return;
-            using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width, Height), Tema.S(12))) Region = new Region(p);
+            // Windows 10: sahte yuvarlatma yok, pencere düz köşeli kalır
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             var g = e.Graphics; Tema.Kaliteli(g);
-            using (var pen = new Pen(Renk.CizgiKoyu))
-            using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width - 1, Height - 1), Tema.S(12))) g.DrawPath(pen, p);
+            Tema.PencereKenari(g, Width, Height, dwmYuvarlak, Tema.S(12));
             if (baslikVar)
                 Tema.YaziCiz(g, baslik, Tema.YaziKalin(13f), Renk.Yazi, new RectangleF(Tema.S(24), Tema.S(14), Width - Tema.S(90), Tema.S(36)));
         }
@@ -485,7 +483,7 @@ namespace Sem.Arayuz
             int w = gen + Tema.S(12 + 18 + 10 + 18), y = pad;
             foreach (var o in ogeler) { int h = o.Ayrac ? ayrac : satir; o.Alan = new Rectangle(pad, y, w - 2 * pad, h); y += h; }
             ClientSize = new Size(w, y + pad);
-            using (var yol = Tema.Yuvarlak(new RectangleF(0, 0, Width, Height), Tema.S(10))) Region = new Region(yol);
+            if (IsHandleCreated) dwmYuvarlak = Tema.KoseleriYuvarla(Handle);
         }
 
         /// <summary>Menüyü bir kontrolün üstünde (yukari) ya da altında gösterir.</summary>
@@ -541,8 +539,10 @@ namespace Sem.Arayuz
                 Tema.IkonCiz(g, o.Ikon, 10f, o.Tehlike ? Renk.Pembe : Renk.Yazi2, new RectangleF(r.X + Tema.S(7), r.Y, Tema.S(20), r.Height));
                 Tema.YaziCiz(g, o.Metin, yazi, renk, new RectangleF(r.X + Tema.S(35), r.Y, r.Width - Tema.S(40), r.Height));
             }
-            using (var pen = new Pen(Renk.CizgiKoyu)) using (var yol = Tema.Yuvarlak(new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f), Tema.S(10))) g.DrawPath(pen, yol);
+            Tema.PencereKenari(g, Width, Height, dwmYuvarlak, Tema.S(10));
         }
+        bool dwmYuvarlak;
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); dwmYuvarlak = Tema.KoseleriYuvarla(Handle); }
     }
 
     /// <summary>

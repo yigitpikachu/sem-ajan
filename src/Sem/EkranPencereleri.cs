@@ -224,4 +224,64 @@ namespace Sem.Ajan
             t.Start();
         }
     }
+    /// <summary>Öğretmenin "Sorun bildir" penceresi: kısa not + isteğe bağlı ekran görüntüsü yönetim paneline gider.</summary>
+    class SorunForm : ModernForm
+    {
+        public static SorunForm Acik;
+        readonly Ekran ekran;
+        readonly string resim;
+        readonly Giris not;
+        readonly Anahtar ekle;
+        readonly Buton gonder;
+        readonly Label durum;
+
+        public SorunForm(Ekran ekran, string resim) : base("Sorun bildir", 460, 380)
+        {
+            this.ekran = ekran; this.resim = resim;
+            TopMost = true; ShowInTaskbar = true; StartPosition = FormStartPosition.CenterScreen;
+            int g = Icerik.Width;
+            var a = Yazi.Etiket("Ne oldu? Kısaca yazın; ekran görüntüsü ve yazıcı durumu da otomatik eklenir.", 10f, false, Renk.Yazi2, false);
+            a.SetBounds(0, 0, g, Tema.S(42));
+            not = new Giris(false, true) { Location = new Point(0, Tema.S(48)), Size = new Size(g, Tema.S(110)), Ipucu = "Örn: Yazıcı kâğıt sıkıştı diyor, çıktı alamıyorum" };
+            ekle = new Anahtar("Ekran görüntüsünü ekle") { Location = new Point(0, Tema.S(170)), Width = g, Acik = resim != "" };
+            durum = Yazi.Etiket("", 9.5f, false, Renk.Yazi2, false); durum.SetBounds(0, Tema.S(214), g, Tema.S(24));
+            Icerik.Controls.AddRange(new Control[] { a, not, ekle, durum });
+            if (resim == "") ekle.Enabled = false;
+            gonder = Diyalog_AltDugmeler("Gönder");
+            gonder.Click += (s, e) => Gonder();
+            Shown += (s, e) => not.Focus();
+            FormClosed += (s, e) => { if (Acik == this) Acik = null; };
+            Acik = this;
+        }
+
+        Buton Diyalog_AltDugmeler(string metin)
+        {
+            var tamam = new Buton(metin, Ik.Gonder, ButonTuru.Birincil) { Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            tamam.Width = Math.Max(tamam.Width, Tema.S(120));
+            var vazgec = new Buton("Vazgeç", "", ButonTuru.Sade) { Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            tamam.Location = new Point(Icerik.Width - tamam.Width, Icerik.Height - tamam.Height);
+            vazgec.Location = new Point(tamam.Left - vazgec.Width - Tema.S(8), tamam.Top);
+            vazgec.Click += (s, e) => Close();
+            Icerik.Controls.Add(tamam); Icerik.Controls.Add(vazgec);
+            return tamam;
+        }
+
+        void Gonder()
+        {
+            var metin = not.Text.Trim();
+            if (metin == "" && !ekle.Acik) { durum.Text = "Lütfen kısaca ne olduğunu yazın."; durum.ForeColor = Renk.PembeKoyu; return; }
+            gonder.Enabled = false; durum.Text = "Gönderiliyor…"; durum.ForeColor = Renk.Yazi2;
+            ekran.Gonder("SORUN", metin, ekle.Acik ? resim : "", Environment.UserName);
+            var t = new Timer { Interval = 8000 };
+            t.Tick += (s, e) => { t.Dispose(); if (!IsDisposed && !gonder.Enabled) Sonuc(false); };
+            t.Start();
+        }
+
+        public void Sonuc(bool ok)
+        {
+            if (IsDisposed) return;
+            if (ok) { Close(); new BildirimForm("Sorun bildirildi", "Yönetime iletildi. En kısa sürede bakılacak.", Ik.TikDaire, Renk.YesilKoyu).Show(); return; }
+            gonder.Enabled = true; durum.Text = "Gönderilemedi. Biraz sonra tekrar deneyin."; durum.ForeColor = Renk.PembeKoyu;
+        }
+    }
 }

@@ -1143,15 +1143,16 @@ namespace Sem.Yonetici
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            if (!Tema.KoseleriYuvarla(Handle)) using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width, Height), Tema.S(12))) Region = new Region(p);
+            dwmYuvarlak = Tema.KoseleriYuvarla(Handle);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             Tema.Kaliteli(e.Graphics);
-            using (var pen = new Pen(Renk.CizgiKoyu)) using (var p = Tema.Yuvarlak(new RectangleF(0, 0, Width - 1, Height - 1), Tema.S(12))) e.Graphics.DrawPath(pen, p);
+            Tema.PencereKenari(e.Graphics, Width, Height, dwmYuvarlak, Tema.S(12));
         }
+        bool dwmYuvarlak;
 
         protected override void OnShown(EventArgs e) { base.OnShown(e); Activate(); }
     }
