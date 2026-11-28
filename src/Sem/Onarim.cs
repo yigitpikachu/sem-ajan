@@ -22,7 +22,7 @@ namespace Sem.Ajan
 {
     static partial class Performans
     {
-        static readonly HashSet<string> Uzun = new HashSet<string> { "disk", "temp", "sfc", "dism", "defender", "wuonar", "aghafif", "checkup", "aygit", "sicaklik" };
+        static readonly HashSet<string> Uzun = new HashSet<string> { "disk", "temp", "sfc", "dism", "defender", "wuonar", "aghafif", "checkup", "aygit", "sicaklik", "tamvirus" };
 
         // ================================================================ Kontroller (salt okuma)
         static IEnumerable<EventRecord> Olaylar(string kayit, string sorgu, int en = 200)
@@ -409,6 +409,7 @@ namespace Sem.Ajan
                 case "sfc": { var n = GeriYuklemeNoktasi(r, "Sistem dosyası onarımı"); x = Sfc(r, ""); x.sonuc += n; break; }
                 case "dism": { var n = GeriYuklemeNoktasi(r, "Windows onarımı"); x = Dism(r, ""); x.sonuc += n; break; }
                 case "defender": x = Defender(r, ""); break;
+                case "tamvirus": x = Defender(r, "", true); break;
                 case "wuonar": { var n = GeriYuklemeNoktasi(r, "Windows Update onarımı"); x = WuOnar(r); x.sonuc += n; break; }
                 case "aghafif": x = AgHafif(r); break;
                 case "aygit": x = AygitTara(r); break;
@@ -464,7 +465,7 @@ namespace Sem.Ajan
 
         static string GeriYuklemeNoktasi(Kayit r, string neden)
         {
-            r.Asama = "Geri yükleme noktası oluşturuluyor"; Yaz(r);
+            r.AsamaAd = "Geri yükleme noktası oluşturuluyor"; Ilerle(r, "0"); Yaz(r);
             const string ps = "try { Enable-ComputerRestore -Drive 'C:\\' -ErrorAction SilentlyContinue; " +
                               "New-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore' -Name SystemRestorePointCreationFrequency -Value 0 -PropertyType DWord -Force | Out-Null; " +
                               "Checkpoint-Computer -Description 'Sem: {0}' -RestorePointType MODIFY_SETTINGS -ErrorAction Stop; 'TAMAM' } catch { 'HATA ' + $_.Exception.Message }";
@@ -472,19 +473,157 @@ namespace Sem.Ajan
             return o.Contains("TAMAM") ? " Öncesinde geri yükleme noktası alındı." : " (Geri yükleme noktası alınamadı.)";
         }
 
+        static bool YuzdeVarMi(string t) => Yuzde.IsMatch(t);
+
+        /// <summary>Aşamanın kendi yüzdesini işler; genel yüzde (check-up'ta tüm işin yüzdesi) ana çubuğa, aşamanınki yazıya.</summary>
+        static void Ilerle(Kayit r, string y)
+        {
+            int p; if (!int.TryParse(y, out p)) return;
+            p = Math.Max(0, Math.Min(100, p));
+            r.Ilerleme = (r.Taban + p * r.Agirlik / 100).ToString();
+            r.Asama = r.AsamaAd + (r.Agirlik < 100 ? " · %" + p : "");
+        }
+
+        // ---- Ayrıntılı rapor: ProgramData\Sem\islem\<id>.txt ("# başlık", "- madde", düz satır)
+        static string DetayKlasor => Path.Combine(AjanAyar.Klasor, "islem");
+        static void DetayEkle(Kayit r, string baslik, IEnumerable<string> satirlar)
+        {
+            try
+            {
+                Directory.CreateDirectory(DetayKlasor);
+                File.AppendAllText(Path.Combine(DetayKlasor, r.Id + ".txt"), "# " + baslik + "\n" + string.Join("\n", satirlar.Where(x => x != null)) + "\n\n", Encoding.UTF8);
+            }
+            catch { }
+        }
+
+        /// <summary>Bir işlemin ayrıntılı raporu. Eski kayıtlar için (dosya yoksa) Windows kayıtlarından sonradan çıkarılır.</summary>
+        public static Mesaj IslemDetay(string id)
+        {
+            var r = Mesaj.Basari("");
+            var f = Path.Combine(DetayKlasor, id + ".txt");
+            try
+            {
+                if (File.Exists(f)) { r.Veri = File.ReadAllBytes(f); return r; }
+                var k = KayitlariOku().FirstOrDefault(x => x.Id == id);
+                if (k == null) return Mesaj.Hata("Kayıt bulunamadı");
+                DateTime bas, bit;
+                DateTime.TryParseExact(k.Bas, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out bas);
+                if (!DateTime.TryParseExact(k.Bit, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out bit)) bit = DateTime.Now;
+                var sb = new StringBuilder();
+                sb.Append("# Sonuç\n" + k.Sonuc.Replace(" / ", "\n").Replace(" | ", "\n") + "\n\n");
+                if (k.Islem == "defender" || k.Islem == "checkup" || k.Islem == "tamvirus")
+                    sb.Append("# Virüs taraması\n" + string.Join("\n", TehditSatirlari(bas.AddMinutes(-1), bit.AddMinutes(1))) + "\n\n");
+                if (k.Islem == "sfc" || k.Islem == "checkup")
+                    sb.Append("# Sistem dosyaları\n" + string.Join("\n", SfcSatirlari(bas, bit)) + "\n\n");
+                if (k.Islem == "disk" || k.Islem == "checkup")
+                    sb.Append("# Disk taraması\n(Bu sürümden önce yapılan taramanın ayrıntısı saklanmadı; sonuç yukarıda.)\n\n");
+                r.Veri = Encoding.UTF8.GetBytes(sb.ToString());
+            }
+            catch (Exception e) { return Mesaj.Hata(e.Message); }
+            return r;
+        }
+
+        // ---- Defender: bulunan tehditler (adı, dosyası, ne yapıldığı)
+        static List<string> TehditSatirlari(DateTime bas, DateTime bit)
+        {
+            var l = new List<string>();
+            var adlar = new Dictionary<string, (string ad, string seviye)>();
+            foreach (var o in W(@"root\Microsoft\Windows\Defender", "SELECT ThreatID, ThreatName, SeverityID FROM MSFT_MpThreat"))
+                adlar[V(o, "ThreatID")] = (V(o, "ThreatName"), V(o, "SeverityID"));
+            foreach (var o in W(@"root\Microsoft\Windows\Defender", "SELECT ThreatID, InitialDetectionTime, Resources, ActionSuccess, CleaningActionID, ThreatStatusID FROM MSFT_MpThreatDetection"))
+            {
+                DateTime z = DateTime.MinValue;
+                try { z = ManagementDateTimeConverter.ToDateTime(V(o, "InitialDetectionTime")); } catch { }
+                if (z < bas || z > bit) continue;
+                adlar.TryGetValue(V(o, "ThreatID"), out var t);
+                string kaynak = "";
+                try { var rs = o["Resources"] as string[]; if (rs != null) kaynak = string.Join(", ", rs.Select(x => x.Contains("_") && x.IndexOf(":_") > 0 ? x.Substring(x.IndexOf(":_") + 2) : x).Take(3)); } catch { }
+                string seviye = t.seviye == "5" ? "ciddi" : t.seviye == "4" ? "yüksek" : t.seviye == "2" ? "orta" : t.seviye == "1" ? "düşük" : "";
+                string durum = V(o, "ThreatStatusID");
+                string ne = durum == "3" || durum == "4" ? "karantinaya alındı" : durum == "5" || durum == "6" ? "silindi" : durum == "102" ? "izin verildi" : durum == "1" ? "bulundu, temizlenmedi" : V(o, "ActionSuccess") == "True" ? "temizlendi" : "durum " + durum;
+                l.Add("- " + z.ToString("d MMM HH:mm", new CultureInfo("tr-TR")) + " · " + (t.ad ?? "Bilinmeyen tehdit") + (seviye != "" ? " (" + seviye + ")" : "") + " · " + ne + (kaynak != "" ? " · " + kaynak : ""));
+            }
+            if (l.Count == 0)
+            {
+                // WMI boşsa olay kaydı
+                foreach (var e in Olaylar("Microsoft-Windows-Windows Defender/Operational", "*[System[(EventID=1116 or EventID=1117)]]", 60))
+                    using (e)
+                    {
+                        var z = e.TimeCreated ?? DateTime.MinValue; if (z < bas || z > bit) continue;
+                        l.Add("- " + z.ToString("d MMM HH:mm", new CultureInfo("tr-TR")) + " · " + XmlVeri(e, "Threat Name") + " · " + (e.Id == 1117 ? "işlem yapıldı: " + XmlVeri(e, "Action Name") : "bulundu") + " · " + XmlVeri(e, "Path"));
+                    }
+            }
+            if (l.Count == 0) l.Add("Bu aralıkta kayıtlı tehdit yok.");
+            return l;
+        }
+
+        // ---- SFC: Windows onarım kaydından (CBS.log) bozuk bulunup onarılan dosyalar
+        static List<string> SfcSatirlari(DateTime bas, DateTime bit)
+        {
+            var onarilan = new List<string>(); var onarilamayan = new List<string>();
+            var dosya = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), @"Logs\CBS\CBS.log");
+            var rx = new Regex(@"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*\[SR\] (Repairing corrupted file|Cannot repair member file|Repaired file) (.+?)( from store|$)");
+            try
+            {
+                using (var fs = new FileStream(dosya, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    if (fs.Length > 40L * 1024 * 1024) fs.Seek(-40L * 1024 * 1024, SeekOrigin.End);
+                    using (var sr = new StreamReader(fs, Encoding.UTF8))
+                    {
+                        string x;
+                        while ((x = sr.ReadLine()) != null)
+                        {
+                            if (x.IndexOf("[SR]", StringComparison.Ordinal) < 0) continue;
+                            var m = rx.Match(x); if (!m.Success) continue;
+                            DateTime z; if (!DateTime.TryParseExact(m.Groups[1].Value, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out z) || z < bas.AddMinutes(-1) || z > bit.AddMinutes(1)) continue;
+                            var yol = Regex.Replace(m.Groups[3].Value, @"^\\\?\?\\", "").Trim();
+                            var ad = DosyaAdi(yol);
+                            if (m.Groups[2].Value.StartsWith("Cannot")) { if (!onarilamayan.Contains(ad)) onarilamayan.Add(ad); }
+                            else if (!onarilan.Contains(ad)) onarilan.Add(ad);
+                        }
+                    }
+                }
+            }
+            catch (Exception e) { return new List<string> { "Windows onarım kaydı okunamadı: " + e.Message }; }
+            var l = new List<string>();
+            if (onarilan.Count > 0) { l.Add("Onarılan " + onarilan.Count + " dosya:"); l.AddRange(onarilan.Take(40).Select(x => "- " + x)); }
+            if (onarilamayan.Count > 0) { l.Add("Onarılamayan " + onarilamayan.Count + " dosya (Windows onarımı (DISM) gerekir):"); l.AddRange(onarilamayan.Take(40).Select(x => "- " + x)); }
+            if (l.Count == 0) l.Add("Onarım kaydında bu aralıkta dosya yok (bozuk dosya bulunmadı ya da kayıt silinmiş).");
+            return l;
+        }
+
+        /// <summary>Dosya yolunu düz Türkçe açıklamayla verir.</summary>
+        static string DosyaAdi(string yol)
+        {
+            var ad = Path.GetFileName(yol); var k = yol.ToLowerInvariant(); var uz = Path.GetExtension(ad).ToLowerInvariant();
+            string ne;
+            if (k.Contains(@"\drivers\") || uz == ".sys") ne = "donanım sürücüsü";
+            else if (k.Contains(@"\winsxs\")) ne = "Windows bileşen deposu";
+            else if (k.Contains(@"\fonts\")) ne = "yazı tipi";
+            else if (k.Contains(@"\systemapps\") || k.Contains(@"\windowsapps\")) ne = "Windows uygulaması";
+            else if (uz == ".dll") ne = "Windows kitaplığı";
+            else if (uz == ".exe") ne = "Windows programı";
+            else if (uz == ".mui") ne = "dil dosyası";
+            else if (uz == ".xml" || uz == ".manifest" || uz == ".cat") ne = "ayar/imza dosyası";
+            else if (uz == ".png" || uz == ".jpg" || uz == ".ico") ne = "görsel";
+            else ne = "sistem dosyası";
+            return ad + " (" + ne + ") · " + yol;
+        }
+
         static readonly Regex Yuzde = new Regex(@"(\d{1,3})(?:[.,]\d+)?\s*%|%\s*(\d{1,3})");
         static string YuzdeAl(string t) { var m = Yuzde.Match(t); return m.Success ? (m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value) : null; }
 
         static (bool, string, string) Sfc(Kayit r, string onek)
         {
-            r.Asama = onek + "Sistem dosyaları denetleniyor"; r.Ilerleme = "0"; Yaz(r);
-            var son = DateTime.MinValue;
+            r.AsamaAd = onek + "Sistem dosyaları"; Ilerle(r, "0"); r.Asama = r.AsamaAd + " · hazırlanıyor (birkaç dakika yüzde vermez)"; Yaz(r);
+            var son = DateTime.MinValue; var bas = DateTime.Now;
             // sfc çıktısı yönlendirilince UTF-16 yazar
             var x = Izle("sfc.exe", "/scannow", Encoding.Unicode, t =>
             {
                 var y = YuzdeAl(t); if (y == null) return;
-                r.Ilerleme = y; if ((DateTime.Now - son).TotalSeconds > 3) { son = DateTime.Now; Yaz(r); }
+                Ilerle(r, y); if ((DateTime.Now - son).TotalSeconds > 3) { son = DateTime.Now; Yaz(r); }
             }, 120);
+            DetayEkle(r, "Sistem dosyaları (sfc /scannow)", SfcSatirlari(bas, DateTime.Now));
             var m = x.metin.ToLowerInvariant();
             if (m.Contains("did not find any integrity") || (m.Contains("ihlal") && (m.Contains("bulamad") || m.Contains("bulunamad")))) return (true, "Sistem dosyaları sağlam, bozuk dosya yok.", "");
             if (m.Contains("successfully repaired") || m.Contains("başarıyla onar")) return (true, "Bozuk sistem dosyaları bulundu ve onarıldı. Yeniden başlatınca tam geçerli olur.", "");
@@ -496,35 +635,38 @@ namespace Sem.Ajan
 
         static (bool, string, string) Dism(Kayit r, string onek)
         {
-            r.Asama = onek + "Windows bileşenleri onarılıyor (internet gerekir)"; r.Ilerleme = "0"; Yaz(r);
+            r.AsamaAd = onek + "Windows bileşenleri onarılıyor (internet gerekir)"; Ilerle(r, "0"); Yaz(r);
             var son = DateTime.MinValue;
             var x = Izle("dism.exe", "/Online /Cleanup-Image /RestoreHealth", Oem(), t =>
             {
                 var y = YuzdeAl(t); if (y == null) return;
-                r.Ilerleme = y; if ((DateTime.Now - son).TotalSeconds > 3) { son = DateTime.Now; Yaz(r); }
+                Ilerle(r, y); if ((DateTime.Now - son).TotalSeconds > 3) { son = DateTime.Now; Yaz(r); }
             }, 180);
+            DetayEkle(r, "Windows onarımı (DISM)", new[] { "Sonuç kodu " + x.kod + (x.kod == 0 ? " (başarılı)" : "") }.Concat(x.metin.Split('\n').Select(y => y.Trim()).Where(y => y != "" && YuzdeAl(y) == null).Skip(0).Reverse().Take(12).Reverse().Select(y => "- " + y)));
             if (x.kod == 0) return (true, "Windows bileşenleri onarıldı ya da zaten sağlamdı. Ardından sistem dosyası onarımı yapılabilir.", "sfc");
             var sonSatir = x.metin.Split('\n').Select(y => y.Trim()).Where(y => y != "" && YuzdeAl(y) == null).LastOrDefault() ?? "";
             return (false, "Windows onarımı tamamlanamadı (kod " + x.kod + "). " + sonSatir, "");
         }
 
-        static (bool, string, string) Defender(Kayit r, string onek)
+        static (bool, string, string) Defender(Kayit r, string onek, bool tam = false)
         {
             var mp = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Windows Defender\MpCmdRun.exe");
             if (!File.Exists(mp)) return (false, "Windows Defender bulunamadı.", "");
             bool etkin = W(@"root\Microsoft\Windows\Defender", "SELECT AntivirusEnabled FROM MSFT_MpComputerStatus").Any(o => V(o, "AntivirusEnabled") == "True");
             if (!etkin) return (false, "Defender kapalı; bu bilgisayarda başka bir antivirüs kullanılıyor olabilir. Taramayı o programla yapın.", "");
-            r.Asama = onek + "Virüs tanımları güncelleniyor"; r.Ilerleme = ""; Yaz(r);
+            r.AsamaAd = onek + "Virüs tanımları güncelleniyor"; Ilerle(r, "0"); Yaz(r);
             var g = Izle(mp, "-SignatureUpdate", Oem(), null, 20);
             var bas = DateTime.Now;
-            r.Asama = onek + "Hızlı virüs taraması yapılıyor"; Yaz(r);
-            var t = Izle(mp, "-Scan -ScanType 1", Oem(), null, 120);
-            var adlar = new List<string>();
-            foreach (var e in Olaylar("Microsoft-Windows-Windows Defender/Operational", "*[System[EventID=1116]]", 50))
-                using (e) if ((e.TimeCreated ?? DateTime.MinValue) >= bas.AddMinutes(-1)) { var a = XmlVeri(e, "Threat Name"); if (a != "" && !adlar.Contains(a)) adlar.Add(a); }
+            r.AsamaAd = onek + (tam ? "Tam virüs taraması (1-3 saat sürebilir)" : "Hızlı virüs taraması"); Ilerle(r, "10"); Yaz(r);
+            var t = Izle(mp, "-Scan -ScanType " + (tam ? "2" : "1"), Oem(), null, tam ? 360 : 120);
+            var tehdit = TehditSatirlari(bas.AddMinutes(-1), DateTime.Now.AddMinutes(1));
+            bool bulundu = !tehdit[0].StartsWith("Bu aralıkta");
             string imza = g.kod == 0 ? "Tanımlar güncellendi. " : "Tanımlar güncellenemedi (internet?). ";
-            if (t.kod == 2 || adlar.Count > 0) return (false, imza + "Tehdit bulundu: " + (adlar.Count > 0 ? string.Join(", ", adlar.Take(3)) : "ayrıntı Defender'da") + ". Defender karantinaya aldı; yine de tam tarama önerilir.", "");
-            if (t.kod == 0) return (true, imza + "Hızlı tarama temiz, tehdit bulunmadı.", "");
+            DetayEkle(r, tam ? "Tam virüs taraması" : "Hızlı virüs taraması", new[] { imza.Trim(), "Tarama sonuç kodu " + t.kod + (t.kod == 0 ? " (temiz)" : t.kod == 2 ? " (tehdit bulundu)" : "") }.Concat(tehdit));
+            var adlar = tehdit.Where(x => x.StartsWith("- ")).Select(x => x.Split('·').Skip(1).FirstOrDefault()?.Trim()).Where(x => !string.IsNullOrEmpty(x)).Distinct().Take(3).ToList();
+            if (bulundu || t.kod == 2)
+                return (false, imza + "Tehdit bulundu: " + (adlar.Count > 0 ? string.Join(", ", adlar) : "adı okunamadı") + ". Ayrıntılar'da dosyası ve Defender'ın ne yaptığı yazar." + (tam ? "" : " Tam tarama önerilir."), tam ? "" : "tamvirus");
+            if (t.kod == 0) return (true, imza + (tam ? "Tam tarama" : "Hızlı tarama") + " temiz, tehdit bulunmadı.", "");
             return (false, imza + "Tarama tamamlanamadı (kod " + t.kod + ").", "");
         }
 
@@ -579,18 +721,24 @@ namespace Sem.Ajan
         static (bool, string, string) Checkup(Kayit r)
         {
             var sonuc = new List<string>(); bool hepsi = true; string ek = "";
+            void Bitti(string ad, (bool ok, string metin, string ek) x)
+            {
+                // Biten aşamanın sonucu hemen kayda geçer (Teşhis'te check-up sürerken görünür)
+                sonuc.Add(ad + ": " + x.metin); hepsi &= x.ok; if (x.ek != "" && ek == "") ek = x.ek;
+                r.Sonuc = string.Join(" | ", sonuc); Yaz(r);
+            }
+            r.Taban = 0; r.Agirlik = 5;
             var nokta = GeriYuklemeNoktasi(r, "Check-up");
-            r.Ilerleme = "5";
-            var d = Defender(r, "1/3 · "); sonuc.Add("Virüs: " + d.Item2); hepsi &= d.Item1;
-            r.Ilerleme = "35"; Yaz(r);
-            var k = DiskTaraIc(r, "2/3 · "); sonuc.Add("Disk: " + k.sonuc); hepsi &= k.ok; if (k.ek != "") ek = k.ek;
-            r.Ilerleme = "60"; Yaz(r);
-            var s = Sfc(r, "3/3 · "); sonuc.Add("Sistem dosyaları: " + s.Item2); hepsi &= s.Item1;
+            r.Taban = 5; r.Agirlik = 30; Bitti("Virüs", Defender(r, "1/3 · "));
+            r.Taban = 35; r.Agirlik = 25; var k = DiskTaraIc(r, "2/3 · "); Bitti("Disk", (k.ok, k.sonuc, k.ek));
+            r.Taban = 60; r.Agirlik = 40; var s = Sfc(r, "3/3 · "); Bitti("Sistem dosyaları", s);
             if (s.Item3 == "dism")
             {
-                var m = Dism(r, "Ek · "); sonuc.Add("Windows onarımı: " + m.Item2);
-                if (m.Item1) { var s2 = Sfc(r, "Ek · "); sonuc.Add("Tekrar sistem dosyaları: " + s2.Item2); hepsi = hepsi && s2.Item1; }
+                r.Taban = 60; r.Agirlik = 40;
+                var m = Dism(r, "Ek · "); Bitti("Windows onarımı", m);
+                if (m.Item1) Bitti("Tekrar sistem dosyaları", Sfc(r, "Ek · "));
             }
+            r.Taban = 0; r.Agirlik = 100;
             return (hepsi, string.Join(" | ", sonuc) + nokta, ek);
         }
     }

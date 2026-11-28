@@ -197,7 +197,7 @@ namespace Sem.Arayuz
         /// <summary>Kenarlıksız pencerenin kenar çizgisi: Windows 11'de sistemin yuvarlak köşesine uyar, Windows 10'da düz dikdörtgen.</summary>
         public static void PencereKenari(Graphics g, int w, int h, bool yuvarlak, float yaricap)
         {
-            using (var pen = new Pen(Renk.CizgiKoyu))
+            using (var pen = new Pen(Color.FromArgb(170, 172, 178))) // pencere kenarı arka plandan net ayrılsın
             {
                 if (yuvarlak) { Kaliteli(g); using (var p = Yuvarlak(new RectangleF(0, 0, w - 1, h - 1), yaricap)) g.DrawPath(pen, p); }
                 else { var eski = g.SmoothingMode; g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None; g.DrawRectangle(pen, 0, 0, w - 1, h - 1); g.SmoothingMode = eski; }

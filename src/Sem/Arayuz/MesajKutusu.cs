@@ -14,7 +14,7 @@ namespace Sem.Arayuz
                 var ok = new Buton("Tamam", "", ButonTuru.Birincil) { Width = Tema.S(120) };
                 ok.Location = new Point(f.Icerik.Width - ok.Width, f.Icerik.Height - ok.Height);
                 ok.Click += (s, e) => f.Close();
-                f.Icerik.Controls.Add(ok);
+                f.Icerik.Controls.Add(ok); ok.BringToFront();
                 f.Shown += (s, e) => ok.Focus();
                 Goster(f, sahip);
             }
@@ -32,7 +32,7 @@ namespace Sem.Arayuz
                 hayir.Location = new Point(ok.Left - hayir.Width - Tema.S(8), ok.Top);
                 ok.Click += (s, e) => { sonuc = true; f.Close(); };
                 hayir.Click += (s, e) => { sonuc = false; f.Close(); };
-                f.Icerik.Controls.Add(ok); f.Icerik.Controls.Add(hayir);
+                f.Icerik.Controls.Add(ok); f.Icerik.Controls.Add(hayir); ok.BringToFront(); hayir.BringToFront();
                 f.Shown += (s, e) => ok.Focus();
                 Goster(f, sahip);
                 return sonuc;
@@ -65,12 +65,15 @@ namespace Sem.Arayuz
 
         static ModernForm Olustur(string baslik, string metin, string ikon, Color renk)
         {
-            int satir;
+            var f = new ModernForm(null, 440, 190);
+            f.StartPosition = FormStartPosition.CenterParent;
+            // Metin gerçek etiket genişliğiyle ölçülür; pencere metne göre uzar (düğmeler metnin altında kalır, kesilmez)
+            int mw = f.Icerik.Width - Tema.S(60), satir;
             using (var bmp = new Bitmap(1, 1))
             using (var g = Graphics.FromImage(bmp))
-                satir = (int)g.MeasureString(metin, Tema.Yazi(10.5f), Tema.S(330)).Height;
-            var f = new ModernForm(null, 440, Math.Max(190, 120 + (int)(satir / Tema.Olcek)));
-            f.StartPosition = FormStartPosition.CenterParent;
+                satir = (int)Math.Ceiling(g.MeasureString(metin, Tema.Yazi(10.5f), mw).Height) + Tema.S(4);
+            int gerek = Tema.S(40) + satir + Tema.S(20) + Tema.S(36);
+            if (f.Icerik.Height < gerek) f.Height += gerek - f.Icerik.Height;
             var ik = new Panel { Size = Tema.S(44, 44), Location = new Point(0, 0), BackColor = Renk.Zemin };
             ik.Paint += (s, e) =>
             {
@@ -79,8 +82,9 @@ namespace Sem.Arayuz
                 Tema.IkonCiz(e.Graphics, ikon, 14f, renk, new RectangleF(0, 0, ik.Width, ik.Height));
             };
             var b1 = Yazi.Etiket(baslik, 12.5f, true); b1.Location = new Point(Tema.S(60), Tema.S(8));
+            if (b1.Width > mw) { b1.AutoSize = false; b1.Size = new Size(mw, Tema.S(28)); b1.AutoEllipsis = true; }
             var m = Yazi.Etiket(metin, 10.5f, false, Renk.Yazi2, false);
-            m.SetBounds(Tema.S(60), Tema.S(40), f.Icerik.Width - Tema.S(60), satir + Tema.S(8));
+            m.SetBounds(Tema.S(60), Tema.S(40), mw, satir);
             f.Icerik.Controls.AddRange(new Control[] { ik, b1, m });
             return f;
         }

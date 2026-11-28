@@ -39,14 +39,23 @@ namespace Sem.Arayuz
             BoyutAyarla();
         }
 
+        int dogal; // yazının kesilmediği en küçük genişlik
+
         public void BoyutAyarla()
         {
             using (var g = CreateGraphics())
             {
                 var w = g.MeasureString(Text, Font).Width;
-                if (Dikey) { Width = Math.Max(Tema.S(60), (int)w + Tema.S(14)); Height = Tema.S(62); }
-                else Width = (int)w + Tema.S(Ikon != "" ? 52 : 32) - (Text == "" ? Tema.S(20) : 0);
+                if (Dikey) { dogal = Math.Max(Tema.S(60), (int)w + Tema.S(14)); Width = dogal; Height = Tema.S(62); }
+                else { dogal = (int)w + Tema.S(Ikon != "" ? 52 : 32) - (Text == "" ? Tema.S(20) : 0); Width = dogal; }
             }
+        }
+
+        // Yazılı düğme hiçbir yerde yazısından dar olamaz (yazı kesilmesin)
+        protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
+        {
+            if (!Dikey && Text != "" && dogal > 0 && width < dogal) width = dogal;
+            base.SetBoundsCore(x, y, width, height, specified);
         }
 
         protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); Invalidate(); }
@@ -437,6 +446,32 @@ namespace Sem.Arayuz
 
         protected override void OnResize(EventArgs e) { base.OnResize(e); BolgeAyarla(); Invalidate(); }
 
+        // Diyalog açıkken arkadaki pencere hafifçe kararır: hangi pencerenin önde olduğu her zaman belli olur
+        Form karartma;
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr sonra, int x, int y, int cx, int cy, uint f);
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (Gomulu || !Modal || Type.GetType("Mono.Runtime") != null) return;
+            try
+            {
+                var sahip = Owner;
+                if (sahip == null || !sahip.Visible || sahip.WindowState == FormWindowState.Minimized) return;
+                karartma = new Form
+                {
+                    FormBorderStyle = FormBorderStyle.None, ShowInTaskbar = false, StartPosition = FormStartPosition.Manual,
+                    BackColor = Color.FromArgb(20, 24, 32), Opacity = 0.28, Bounds = sahip.Bounds, Enabled = false,
+                };
+                karartma.Show(sahip);
+                // Karartma diyaloğun hemen altında kalsın
+                SetWindowPos(karartma.Handle, Handle, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
+                Activate();
+                FormClosed += (s, a) => { try { karartma?.Close(); karartma?.Dispose(); karartma = null; } catch { } };
+            }
+            catch { }
+        }
+
         void BolgeAyarla()
         {
             // Windows 10: sahte yuvarlatma yok, pencere düz köşeli kalır
@@ -461,7 +496,7 @@ namespace Sem.Arayuz
             tamam.Location = new Point(Icerik.Width - tamam.Width, Icerik.Height - tamam.Height);
             vazgec.Location = new Point(tamam.Left - vazgec.Width - Tema.S(8), tamam.Top);
             vazgec.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
-            Icerik.Controls.Add(tamam); Icerik.Controls.Add(vazgec);
+            Icerik.Controls.Add(tamam); Icerik.Controls.Add(vazgec); tamam.BringToFront(); vazgec.BringToFront();
             return tamam;
         }
     }

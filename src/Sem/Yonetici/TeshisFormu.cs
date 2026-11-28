@@ -77,6 +77,7 @@ namespace Sem.Yonetici
                 case "sysmain": return "SysMain'i kapat";
                 case "acilis": return "Açılıştan çıkar: " + ad;
                 case "checkup": return "Tam check-up";
+                case "tamvirus": return "Tam virüs taraması";
                 case "sicaklik": return "Sıcaklık ölçümünü aç";
                 case "geri": return "Geri al";
                 default: return islem;
@@ -219,7 +220,7 @@ namespace Sem.Yonetici
             }
             int tehdit = Tam(m, "tehdit");
             if (tehdit > 0)
-                b.Add(new Bulgu { Baslik = "Virüs bulundu (" + tehdit + " kez)", Olasilik = 2, Kanit = "Son 7 günde Defender tehdit yakaladı" + (m["tehdit_ad"] != "" ? ": " + m["tehdit_ad"] : "") + ".", Oneri = "Defender genelde karantinaya alır; tanımlar güncellenip yeniden tarama yapılmalı. USB belleklere dikkat.", Coz = "defender", CozMetin = "Güncelle ve tara" });
+                b.Add(new Bulgu { Baslik = "Virüs bulundu (" + tehdit + " kez)", Olasilik = 2, Kanit = "Son 7 günde Defender tehdit yakaladı" + (m["tehdit_ad"] != "" ? ": " + m["tehdit_ad"] : "") + ".", Oneri = "Defender genelde karantinaya alır. Tam tarama bütün diskleri gezer (1-3 saat); hızlı tarama için Bakım araçlarındaki Virüs taraması. USB belleklere dikkat.", Coz = "tamvirus", CozMetin = "Tam tara" });
 
             // ---- Ağ
             if (m["ag_ad"] != "")
@@ -550,7 +551,7 @@ namespace Sem.Yonetici
             Ui(() =>
             {
                 // Durumu değişen (bitti/yeni başladı) varsa liste yeniden çizilir; yoksa yalnızca ilerleme güncellenir
-                bool yapi = il.Count != islemler.Count || il.Any(x => !islemler.Any(y => y.Id == x.Id && y.Durum == x.Durum));
+                bool yapi = il.Count != islemler.Count || il.Any(x => !islemler.Any(y => y.Id == x.Id && y.Durum == x.Durum && y.Sonuc == x.Sonuc));
                 islemler = il;
                 if (yapi || canliKart.Count == 0) { if (sonM != null) Ciz(sonM, sonL, sonB, sonIkiz); return; }
                 foreach (var x in il.Where(k => k.Suruyor && canliKart.ContainsKey(k.Id))) CanliYaz(x, canliKart[x.Id]);
@@ -617,7 +618,7 @@ namespace Sem.Yonetici
                 var son = islemler.FirstOrDefault(x => x.Islem == b.Coz && (b.Coz != "program" || x.Ad == b.CozAd));
                 bool suruyor = son != null && son.Suruyor;
                 var c = new Buton(suruyor ? "Sürüyor…" : son != null ? "Tekrar: " + b.CozMetin : b.CozMetin, Ik.Tik, son != null ? ButonTuru.Ikincil : ButonTuru.Birincil) { Location = new Point(Tema.S(14), y), Enabled = !suruyor };
-                c.Click += (s, e) => Coz(b.Coz, b.CozAd, c);
+                c.Click += (s, e) => { if (Onayla(b.Coz)) Coz(b.Coz, b.CozAd, c); };
                 p.Controls.Add(c);
                 if (son != null && !suruyor)
                 {
@@ -660,6 +661,7 @@ namespace Sem.Yonetici
             ["wuonar"] = "Güncelleme servisleri durdurulup önbellek yenilenir; o sırada iniyorsa güncelleme baştan iner. Önce geri yükleme noktası alınır.",
             ["agtam"] = "Ağ ayarları fabrika haline döner; bilgisayar yeniden başlatılana kadar geçerli olmaz. Elle girilmiş IP varsa yapılmaz. Önce geri yükleme noktası alınır.",
             ["bellek"] = "Bilgisayar bir sonraki yeniden başlatmada 15-20 dakika bellek testi yapar; o sırada kullanılamaz. Şimdi yeniden başlatılmaz. Geri alınabilir.",
+            ["tamvirus"] = "Bütün diskler taranır; 1-3 saat sürebilir ve bu sırada bilgisayar biraz yavaşlar. Bulunan tehditler Windows Defender tarafından karantinaya alınır, başka dosyaya dokunulmaz.",
             ["aghafif"] = "DNS önbelleği temizlenir ve IP yenilenir; bağlantı birkaç saniye kopabilir.",
         };
 
@@ -675,7 +677,7 @@ namespace Sem.Yonetici
             var p = new Panel { Width = w, BackColor = Renk.Zemin, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             var araclar = new (string islem, string metin, string ikon, bool ana)[]
             {
-                ("checkup", "Tam check-up", Ik.Kalp, true), ("defender", "Virüs taraması", Ik.Kalkan, false), ("disk", "Disk tara", Ik.Anahtar_, false),
+                ("checkup", "Tam check-up", Ik.Kalp, true), ("defender", "Virüs taraması", Ik.Kalkan, false), ("tamvirus", "Tam virüs taraması", Ik.Kalkan, false), ("disk", "Disk tara", Ik.Anahtar_, false),
                 ("sfc", "Sistem dosyalarını onar", Ik.Anahtar_, false), ("dism", "Windows onarımı", Ik.Anahtar_, false), ("wuonar", "Windows Update onar", Ik.Esitle, false),
                 ("temp", "Geçici dosyalar", Ik.Sil, false), ("aghafif", "Ağı onar (hafif)", Ik.Kopuk, false), ("agtam", "Ağı sıfırla (tam)", Ik.Kopuk, false),
                 ("saat", "Saati eşitle", Ik.Takvim, false), ("aygit", "Aygıtları tara", Ik.Masaustu, false), ("bellek", "Bellek testi", Ik.Kalp, false),
@@ -735,6 +737,14 @@ namespace Sem.Yonetici
                 var cb = cubuk;
                 cubuk.Paint += (s, e) => { int yz = cb.Tag is int n ? n : -1; if (yz < 0) return; using (var br = new SolidBrush(Renk.Mavi)) e.Graphics.FillRectangle(br, 0, 0, cb.Width * Math.Min(100, yz) / 100, cb.Height); };
                 p.Controls.Add(cubuk); y += Tema.S(14);
+                if (x.Sonuc != "")
+                {
+                    var ks = "Biten aşamalar: " + x.Sonuc;
+                    var sn = Yazi.Etiket(ks, 9.25f, false, Renk.Yazi, false);
+                    int sh; using (var g = CreateGraphics()) sh = (int)Math.Ceiling(g.MeasureString(ks, sn.Font, w - Tema.S(28)).Height) + Tema.S(2);
+                    sn.SetBounds(Tema.S(14), y - Tema.S(2), w - Tema.S(28), sh); sn.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+                    p.Controls.Add(sn); y += sh + Tema.S(4);
+                }
                 canliKart[x.Id] = (d, a, cubuk);
                 CanliYaz(x, (d, a, cubuk));
             }
@@ -747,13 +757,23 @@ namespace Sem.Yonetici
                 sn.SetBounds(Tema.S(14), y - Tema.S(2), w - Tema.S(28), sh); sn.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
                 p.Controls.Add(sn); y += sh + Tema.S(4);
                 // Sonraki adım: tarama hata bulduysa açılışta onarım
-                var sonraki = x.Ek == "diskonar" ? ("diskonar", "Açılışta onar") : x.Ek == "dism" ? ("dism", "Windows onarımını başlat") : x.Ek == "sfc" && x.Islem == "dism" ? ("sfc", "Sistem dosyalarını onar") : (null, null);
+                var sonraki = x.Ek == "diskonar" ? ("diskonar", "Açılışta onar") : x.Ek == "dism" ? ("dism", "Windows onarımını başlat") : x.Ek == "sfc" && x.Islem == "dism" ? ("sfc", "Sistem dosyalarını onar") : x.Ek == "tamvirus" ? ("tamvirus", "Tam virüs taraması yap") : (null, null);
                 if (sonraki.Item1 != null && !islemler.Any(k => k.Islem == sonraki.Item1 && k.Bas > x.Bas))
                 {
                     var c = new Buton(sonraki.Item2, Ik.Anahtar_, ButonTuru.Birincil) { Location = new Point(Tema.S(14), y) };
                     var isl = sonraki.Item1;
                     c.Click += (s, e) => { if (Onayla(isl)) Coz(isl, "", c); };
                     p.Controls.Add(c); y += c.Height + Tema.S(6);
+                }
+                if (DetayliIslem(x.Islem))
+                {
+                    // Sonraki adım düğmesi varsa onun yanına, yoksa kendi satırına
+                    var once = p.Controls.OfType<Buton>().LastOrDefault();
+                    var c = new Buton("Ayrıntılar", Ik.Belge, ButonTuru.Ikincil);
+                    if (once != null) c.Location = new Point(once.Right + Tema.S(8), once.Top);
+                    else { c.Location = new Point(Tema.S(14), y); y += c.Height + Tema.S(6); }
+                    c.Click += (s, e) => new IslemDetayForm(pc, x, baslik).ShowDialog(Sahip);
+                    p.Controls.Add(c);
                 }
                 if (x.Ek == "geri" && x.Durum == "t")
                 {
@@ -773,6 +793,8 @@ namespace Sem.Yonetici
             kap.Controls.Add(p); p.Location = Point.Empty;
             return kap;
         }
+
+        static bool DetayliIslem(string islem) => new[] { "checkup", "sfc", "dism", "defender", "tamvirus", "disk" }.Contains(islem);
 
         void CanliYaz(IslemKaydi x, (Label durum, Label detay, Panel cubuk) k)
         {

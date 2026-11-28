@@ -639,6 +639,7 @@ namespace Sem.Ajan
                 case "PERF_VERI": return Performans.Veri(m["hafif"] != "1");
                 case "PERF_COZ": return Performans.Coz(m["islem"], m["ad"]);
                 case "ISLEMLER": return Performans.Islemler();
+                case "ISLEM_DETAY": return Performans.IslemDetay(m["id"]);
                 case "TONER_DURUM": return TonerIzleme.Ozet(ayar.YaziciIp);
                 case "TONER_DEGISTI": return TonerIzleme.Degisti(ayar.YaziciIp);
                 case "INTERNET_KARNE": return InternetKarnesi.Karne(m["ay"]);

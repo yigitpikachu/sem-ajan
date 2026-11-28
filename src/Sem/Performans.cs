@@ -312,7 +312,7 @@ namespace Sem.Ajan
         // Çöz ile başlatılan her işlem islemler.txt'ye yazılır; panel sonradan açıldığında da
         // durumu (sürüyor / bitti / hata), ilerlemesi ve sonucu görülür.
         // Satır: id|baslangic|bitis|islem|ad|durum(s,t,h,y)|ilerleme(%)|asama|sonuc|ek
-        class Kayit { public string Id, Bas, Bit = "", Islem, Ad = "", Durum = "s", Ilerleme = "", Asama = "", Sonuc = "", Ek = ""; }
+        class Kayit { public string Id, Bas, Bit = "", Islem, Ad = "", Durum = "s", Ilerleme = "", Asama = "", Sonuc = "", Ek = ""; public int Taban, Agirlik = 100; public string AsamaAd = ""; }
         static string IslemDosya => Path.Combine(AjanAyar.Klasor, "islemler.txt");
         static readonly object ik = new object();
         static readonly HashSet<string> suren = new HashSet<string>();
@@ -496,7 +496,7 @@ namespace Sem.Ajan
             var topRx = new System.Text.RegularExpressions.Regex(@"(Total|Toplam)\s*:\s*%?\s*(\d{1,3})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             var tum = new StringBuilder(); var satir = new StringBuilder();
             var sonYaz = DateTime.MinValue;
-            r.Asama = onek + "Disk taraması başlıyor"; r.Ilerleme = ""; Yaz(r);
+            r.AsamaAd = onek + "Disk taraması başlıyor"; r.Asama = r.AsamaAd; Ilerle(r, "0"); Yaz(r);
             using (var x = Process.Start(psi))
             {
                 x.PriorityClass = ProcessPriorityClass.BelowNormal;
@@ -508,9 +508,9 @@ namespace Sem.Ajan
                     if (s == "") continue;
                     tum.AppendLine(s);
                     var a = asamaRx.Match(s);
-                    if (a.Success) r.Asama = onek + "Aşama " + a.Groups[2].Value + "/3: " + a.Groups[3].Value.Trim().TrimEnd('.', ' ');
+                    if (a.Success) { r.AsamaAd = onek + "Disk · bölüm " + a.Groups[2].Value + "/3: " + a.Groups[3].Value.Trim().TrimEnd('.', ' '); r.Asama = r.AsamaAd; }
                     var t = topRx.Match(s);
-                    if (t.Success) r.Ilerleme = t.Groups[2].Value;
+                    if (t.Success) Ilerle(r, t.Groups[2].Value);
                     if (a.Success || (DateTime.Now - sonYaz).TotalSeconds > 3) { sonYaz = DateTime.Now; Yaz(r); }
                 }
                 x.WaitForExit(3 * 60 * 60 * 1000);
@@ -518,6 +518,8 @@ namespace Sem.Ajan
                 int kod = x.HasExited ? x.ExitCode : -1;
                 var son = tum.ToString().Split('\n').Select(y => y.Trim()).Where(y => y != "" && !topRx.IsMatch(y)).ToList();
                 var ozet = string.Join(" ", son.Skip(Math.Max(0, son.Count - 2)));
+                DetayEkle(r, "Disk taraması (chkdsk C: /scan)", new[] { "Sonuç kodu " + kod + (kod == 0 ? " (temiz)" : kod == 1 ? " (hata bulunup düzeltildi)" : kod == 3 ? " (hata var, onarım gerekli)" : "") }
+                    .Concat(son.Where(y => !asamaRx.IsMatch(y) && YuzdeVarMi(y) == false).Skip(Math.Max(0, son.Count - 25)).Select(y => "- " + y)));
                 if (kod == 0 || kod == 2) return (true, "Disk temiz, sorun bulunmadı.", "");
                 if (kod == 1) return (true, "Hatalar bulundu ve düzeltildi.", "");
                 if (kod == 3) return (false, "Diskte hata bulundu, onarım gerekiyor. " + ozet, "diskonar");
