@@ -638,6 +638,7 @@ namespace Sem.Ajan
                 case "BASKI_DEFTERI": { int g; if (!int.TryParse(m["gun"], out g)) g = 62; return BaskiDefteri.Oku(g); }
                 case "PERF_VERI": return Performans.Veri();
                 case "PERF_COZ": return Performans.Coz(m["islem"], m["ad"]);
+                case "ISLEMLER": return Performans.Islemler();
                 case "TONER_DURUM": return TonerIzleme.Ozet(ayar.YaziciIp);
                 case "TONER_DEGISTI": return TonerIzleme.Degisti(ayar.YaziciIp);
                 case "INTERNET_KARNE": return InternetKarnesi.Karne(m["ay"]);
@@ -765,6 +766,7 @@ namespace Sem.Ajan
             r["paylasim"] = ayar.Paylasim ? "1" : "0"; r["telefon"] = ayar.Telefon ? "1" : "0"; r["yonetici"] = ayar.Yonetici ? "1" : "0";
             r["sorun"] = SorunBildir.Bekleyenler();
             r["perf_uyari"] = Performans.Uyari;
+            r["islem_son"] = Performans.SonBiten();
             if (ayar.Yonetici)
             {
                 r["radar_yeni"] = AgRadari.YeniOzet(); r["toner_uyari"] = TonerIzleme.Uyari;

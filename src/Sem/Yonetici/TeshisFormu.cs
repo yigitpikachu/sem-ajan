@@ -35,6 +35,41 @@ namespace Sem.Yonetici
         }
     }
 
+    /// <summary>Çöz ile başlatılmış bir işlemin kaydı (ajanın islemler.txt'si).</summary>
+    class IslemKaydi
+    {
+        public string Id, Islem, Ad, Durum, Asama, Sonuc, Ek; public int Ilerleme = -1; public DateTime Bas, Bit;
+        public bool Suruyor => Durum == "s";
+        static bool Z(string s, out DateTime d) => DateTime.TryParseExact(s, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out d);
+        public static List<IslemKaydi> Coz(byte[] veri)
+        {
+            var l = new List<IslemKaydi>();
+            foreach (var p in Izleme.Satirlar(veri))
+            {
+                if (p.Length < 10) continue;
+                var k = new IslemKaydi { Id = p[0], Islem = p[3], Ad = p[4], Durum = p[5], Asama = p[7], Sonuc = p[8], Ek = p[9].Trim() };
+                if (!Z(p[1], out k.Bas)) continue; Z(p[2], out k.Bit);
+                int n; if (int.TryParse(p[6], out n)) k.Ilerleme = n;
+                l.Add(k);
+            }
+            return l.OrderByDescending(x => x.Bas).ToList();
+        }
+        public static string Adi(string islem, string ad)
+        {
+            switch (islem)
+            {
+                case "guc": return "Güç ayarı: Yüksek performans";
+                case "hizlibaslat": return "Hızlı başlatmayı kapat";
+                case "program": return "Programı kapat: " + ad;
+                case "temp": return "Geçici dosya temizliği";
+                case "disk": return "Disk taraması";
+                case "diskonar": return "Açılışta disk onarımı";
+                default: return islem;
+            }
+        }
+        public static string Sure(TimeSpan t) => t.TotalMinutes < 1 ? (int)t.TotalSeconds + " sn" : t.TotalHours < 1 ? (int)t.TotalMinutes + " dk" : (int)t.TotalHours + " sa " + t.Minutes + " dk";
+    }
+
     class Bulgu
     {
         public string Baslik, Kanit, Oneri, Coz = "", CozAd = "", CozMetin = "Çöz";
@@ -240,6 +275,11 @@ namespace Sem.Yonetici
         readonly PerfGrafik grafik = new PerfGrafik();
         readonly Label ozet, durum;
         readonly Action<string, int> kaydet;
+        Mesaj sonM; List<PerfOlcum> sonL; List<Bulgu> sonB; string sonIkiz = "";
+        List<IslemKaydi> islemler = new List<IslemKaydi>();
+        readonly Timer canli = new Timer { Interval = 3000 };
+        readonly Dictionary<string, (Label durum, Label detay, Panel cubuk)> canliKart = new Dictionary<string, (Label, Label, Panel)>();
+        bool soruluyor;
 
         public TeshisForm(Pc pc, List<Pc> digerleri, Action<string, int> kaydet) : base(pc.Baslik + " · teşhis ve hızlandır", 780, 700)
         {
@@ -253,6 +293,9 @@ namespace Sem.Yonetici
             liste.Kutu.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; durum.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             Icerik.Controls.AddRange(new Control[] { ozet, grafik, liste.Kutu, durum });
             Shown += (s, e) => Task.Run(Yukle);
+            // Süren işlem varken 3 sn'de bir durum sorulur; pencere kapanınca işlem bilgisayarda sürer
+            canli.Tick += (s, e) => { if (!soruluyor && islemler.Any(x => x.Suruyor)) { soruluyor = true; Task.Run(() => { try { IslemleriAl(); } finally { soruluyor = false; } }); } };
+            canli.Start(); FormClosed += (s, e) => canli.Dispose();
         }
 
         void Ui(Action a) { try { if (!IsDisposed) BeginInvoke(a); } catch { } }
@@ -272,22 +315,49 @@ namespace Sem.Yonetici
             var en = sonuclar.Select(x => (x.p, x.m, l: PerfOlcum.Coz(x.m.Veri))).OrderByDescending(x => x.l.Count).FirstOrDefault();
             if (en.p != null) { ikizAd = en.p.Baslik; ikiz = en.m; ikizL = en.l; }
             var bulgular = Teshis.Incele(m, l, ikizAd, ikiz, ikizL);
-            Ui(() => Ciz(m, l, bulgular, ikizAd));
+            List<IslemKaydi> il = null;
+            try { var r = Baglanti.Gonder(pc.Ip, new Mesaj("ISLEMLER"), 15000); if (r.Tamam) il = IslemKaydi.Coz(r.Veri); } catch { }
+            Ui(() => { if (il != null) islemler = il; Ciz(m, l, bulgular, ikizAd); });
+        }
+
+        void IslemleriAl()
+        {
+            List<IslemKaydi> il;
+            try { var r = Baglanti.Gonder(pc.Ip, new Mesaj("ISLEMLER"), 15000); if (!r.Tamam) return; il = IslemKaydi.Coz(r.Veri); } catch { return; }
+            Ui(() =>
+            {
+                // Durumu değişen (bitti/yeni başladı) varsa liste yeniden çizilir; yoksa yalnızca ilerleme güncellenir
+                bool yapi = il.Count != islemler.Count || il.Any(x => !islemler.Any(y => y.Id == x.Id && y.Durum == x.Durum));
+                islemler = il;
+                if (yapi || canliKart.Count == 0) { if (sonM != null) Ciz(sonM, sonL, sonB, sonIkiz); return; }
+                foreach (var x in il.Where(k => k.Suruyor && canliKart.ContainsKey(k.Id))) CanliYaz(x, canliKart[x.Id]);
+            });
         }
 
         void Ciz(Mesaj m, List<PerfOlcum> l, List<Bulgu> bulgular, string ikizAd)
         {
+            sonM = m; sonL = l; sonB = bulgular; sonIkiz = ikizAd;
+            int kaydir = -liste.Govde.AutoScrollPosition.Y;
             var tr = new CultureInfo("tr-TR");
             DateTime acilis; var ac = Izleme.Zaman(m["acilis"], out acilis) ? (DateTime.Now - acilis).TotalDays < 1 ? "bugün açıldı" : (int)(DateTime.Now - acilis).TotalDays + " gündür açık" : "";
             ozet.Text = m["islemci"] + " · RAM " + m["ram_detay"] + " · " + m["disk_tur"] + (ac != "" ? " · " + ac : "") +
                         "\n" + l.Count + " ölçüm (son 2 gün)" + (ikizAd != "" ? " · " + ikizAd + " ile karşılaştırıldı" : "");
             grafik.Veri = l; grafik.Invalidate();
-            liste.Temizle();
+            liste.Temizle(); canliKart.Clear();
+            // Yapılan işlemler (son 7 gün): sürenler canlı, bitenler sonucuyla
+            var gorunen = islemler.Where(x => x.Suruyor || (DateTime.Now - x.Bas).TotalDays < 7).Take(6).ToList();
+            if (gorunen.Count > 0)
+            {
+                liste.Baslik("Yapılan işlemler");
+                foreach (var x in gorunen) liste.EklePx(IslemKart(x));
+                liste.Baslik("Olası nedenler");
+            }
             if (l.Count < 6) liste.Metin("Kayıt yeni başladı (" + l.Count + " ölçüm). Kesin sonuç için bilgisayar birkaç saat açık kalsın, özellikle kasmaya başladıktan sonra tekrar bakın.", Renk.Turuncu, 9.5f, false, 40);
             var asil = bulgular.Where(x => x.Olasilik >= 0).ToList();
             if (asil.Count == 0) liste.Metin("Belirgin bir sorun görünmüyor.", Renk.YesilKoyu, 11f, true, 28);
             foreach (var b in bulgular) liste.EklePx(Kart(b));
             liste.Bitir();
+            if (kaydir > 0) liste.Govde.AutoScrollPosition = new Point(0, kaydir);
             durum.Text = "Isı ve RAM gibi donanım nedenleri yazılımla çözülemez; yapılacak iş kartta yazar.";
         }
 
@@ -310,9 +380,18 @@ namespace Sem.Yonetici
             p.Controls.AddRange(new Control[] { t, o, k, n });
             if (b.Coz != "")
             {
-                var c = new Buton(b.CozMetin, Ik.Tik, ButonTuru.Birincil) { Location = new Point(Tema.S(14), y) };
-                c.Click += (s, e) => Coz(b, c);
-                p.Controls.Add(c); y += c.Height + Tema.S(6);
+                var son = islemler.FirstOrDefault(x => x.Islem == b.Coz && (b.Coz != "program" || x.Ad == b.CozAd));
+                bool suruyor = son != null && son.Suruyor;
+                var c = new Buton(suruyor ? "Sürüyor…" : son != null ? "Tekrar: " + b.CozMetin : b.CozMetin, Ik.Tik, son != null ? ButonTuru.Ikincil : ButonTuru.Birincil) { Location = new Point(Tema.S(14), y), Enabled = !suruyor };
+                c.Click += (s, e) => Coz(b.Coz, b.CozAd, c);
+                p.Controls.Add(c);
+                if (son != null && !suruyor)
+                {
+                    var sn = Yazi.Etiket("Son: " + son.Bit.ToString("d MMM HH:mm", new CultureInfo("tr-TR")) + " · " + son.Sonuc, 8.75f, false, son.Durum == "t" ? Renk.YesilKoyu : Renk.PembeKoyu, false);
+                    sn.SetBounds(c.Right + Tema.S(12), y + (c.Height - Tema.S(20)) / 2, w - c.Right - Tema.S(26), Tema.S(20)); sn.AutoEllipsis = true; sn.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+                    p.Controls.Add(sn);
+                }
+                y += c.Height + Tema.S(6);
             }
             p.Height = y + Tema.S(10);
             p.Paint += (s, e) => { using (var pen = new Pen(Renk.Cizgi)) e.Graphics.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1); using (var br = new SolidBrush(renk)) e.Graphics.FillRectangle(br, 0, 0, Tema.S(3), p.Height); };
@@ -324,17 +403,70 @@ namespace Sem.Yonetici
         // SatirListesi.Ekle yüksekliği sabit istediği için kartın kendi yüksekliğini ileten küçük sarmalayıcı
         Control Sar(Panel kap) { kap.Tag = kap.Height; return kap; }
 
-        void Coz(Bulgu b, Buton c)
+        void Coz(string islem, string ad, Buton c)
         {
-            c.Enabled = false; c.Text = "Uygulanıyor…";
+            c.Enabled = false; c.Text = "Başlatılıyor…"; c.BoyutAyarla();
             Task.Run(() =>
             {
-                string sonuc; bool ok;
-                try { var r = Baglanti.Gonder(pc.Ip, new Mesaj("PERF_COZ") { ["islem"] = b.Coz, ["ad"] = b.CozAd }, 120000); ok = r.Tamam; sonuc = r["aciklama"]; }
-                catch (Exception ex) { ok = false; sonuc = ex.Message; }
-                kaydet?.Invoke(pc.Baslik + ": " + sonuc, ok ? 1 : 2);
-                Ui(() => { c.Text = ok ? "✓ " + sonuc : "Olmadı: " + sonuc; c.BoyutAyarla(); c.Enabled = !ok; });
+                string hata = null;
+                try { var r = Baglanti.Gonder(pc.Ip, new Mesaj("PERF_COZ") { ["islem"] = islem, ["ad"] = ad }, 120000); if (r["id"] == "" && !r.Tamam) hata = r["aciklama"]; }
+                catch (Exception ex) { hata = ex.Message; }
+                if (hata != null) { Ui(() => { c.Text = "Olmadı: " + hata; c.BoyutAyarla(); c.Enabled = true; }); return; }
+                // Sonuç "Yapılan işlemler"de görünür; bittiğinde Etkinlik'e de düşer
+                IslemleriAl();
             });
+        }
+
+        Control IslemKart(IslemKaydi x)
+        {
+            int w = liste.Genislik;
+            var tr = new CultureInfo("tr-TR");
+            var renk = x.Suruyor ? Renk.Mavi : x.Durum == "t" ? Renk.YesilKoyu : x.Durum == "y" ? Renk.Turuncu : Renk.PembeKoyu;
+            var p = new Panel { Width = w, BackColor = Renk.Yuzey, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            var t = Yazi.Etiket(IslemKaydi.Adi(x.Islem, x.Ad), 10f, true, Renk.Yazi, false); t.SetBounds(Tema.S(14), Tema.S(9), w - Tema.S(220), Tema.S(22)); t.AutoEllipsis = true;
+            var d = Yazi.Etiket("", 9f, true, renk, false); d.SetBounds(w - Tema.S(200), Tema.S(11), Tema.S(186), Tema.S(20)); d.TextAlign = ContentAlignment.TopRight; d.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            var a = Yazi.Etiket("", 9f, false, Renk.Yazi2, false); a.SetBounds(Tema.S(14), Tema.S(32), w - Tema.S(28), Tema.S(20)); a.AutoEllipsis = true; a.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            p.Controls.AddRange(new Control[] { t, d, a });
+            int y = Tema.S(56);
+            Panel cubuk = null;
+            if (x.Suruyor)
+            {
+                cubuk = new Panel { BackColor = Renk.Cizgi, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Tag = x.Ilerleme };
+                cubuk.SetBounds(Tema.S(14), y, w - Tema.S(28), Tema.S(6));
+                var cb = cubuk;
+                cubuk.Paint += (s, e) => { int yz = cb.Tag is int n ? n : -1; if (yz < 0) return; using (var br = new SolidBrush(Renk.Mavi)) e.Graphics.FillRectangle(br, 0, 0, cb.Width * Math.Min(100, yz) / 100, cb.Height); };
+                p.Controls.Add(cubuk); y += Tema.S(14);
+                canliKart[x.Id] = (d, a, cubuk);
+                CanliYaz(x, (d, a, cubuk));
+            }
+            else
+            {
+                d.Text = x.Durum == "t" ? "✓ Tamamlandı" : x.Durum == "y" ? "Yarıda kaldı" : "Sorun var";
+                a.Text = x.Bas.ToString("d MMM HH:mm", tr) + (x.Bit > x.Bas ? " · " + IslemKaydi.Sure(x.Bit - x.Bas) + " sürdü" : "");
+                var sn = Yazi.Etiket(x.Sonuc, 9.25f, false, x.Durum == "t" ? Renk.Yazi : renk, false);
+                int sh; using (var g = CreateGraphics()) sh = (int)Math.Ceiling(g.MeasureString(x.Sonuc, sn.Font, w - Tema.S(28)).Height) + Tema.S(2);
+                sn.SetBounds(Tema.S(14), y - Tema.S(2), w - Tema.S(28), sh); sn.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+                p.Controls.Add(sn); y += sh + Tema.S(4);
+                // Sonraki adım: tarama hata bulduysa açılışta onarım
+                if (x.Ek == "diskonar" && !islemler.Any(k => k.Islem == "diskonar" && k.Bas > x.Bas))
+                {
+                    var c = new Buton("Açılışta onar", Ik.Anahtar_, ButonTuru.Birincil) { Location = new Point(Tema.S(14), y) };
+                    c.Click += (s, e) => Coz("diskonar", "", c);
+                    p.Controls.Add(c); y += c.Height + Tema.S(6);
+                }
+            }
+            p.Height = y + Tema.S(6);
+            p.Paint += (s, e) => { using (var pen = new Pen(Renk.Cizgi)) e.Graphics.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1); using (var br = new SolidBrush(renk)) e.Graphics.FillRectangle(br, 0, 0, Tema.S(3), p.Height); };
+            var kap = new Panel { Width = w, Height = p.Height + Tema.S(8), BackColor = Renk.Zemin, Anchor = p.Anchor };
+            kap.Controls.Add(p); p.Location = Point.Empty;
+            return kap;
+        }
+
+        void CanliYaz(IslemKaydi x, (Label durum, Label detay, Panel cubuk) k)
+        {
+            k.durum.Text = "Sürüyor" + (x.Ilerleme >= 0 ? " · %" + x.Ilerleme : "");
+            k.detay.Text = x.Bas.ToString("HH:mm") + "'de başladı · " + IslemKaydi.Sure(DateTime.Now - x.Bas) + " geçti" + (x.Asama != "" ? " · " + x.Asama : "");
+            k.cubuk.Tag = x.Ilerleme; k.cubuk.Invalidate();
         }
     }
 }

@@ -236,72 +236,217 @@ namespace Sem.Ajan
             using (var x = Process.Start(p)) { var o = x.StandardOutput.ReadToEnd() + x.StandardError.ReadToEnd(); x.WaitForExit(ms); return o.Trim(); }
         }
 
-        public static Mesaj Coz(string islem, string ad)
+        // ------------------------------------------------------------ İşlem kaydı
+        // Çöz ile başlatılan her işlem islemler.txt'ye yazılır; panel sonradan açıldığında da
+        // durumu (sürüyor / bitti / hata), ilerlemesi ve sonucu görülür.
+        // Satır: id|baslangic|bitis|islem|ad|durum(s,t,h,y)|ilerleme(%)|asama|sonuc|ek
+        class Kayit { public string Id, Bas, Bit = "", Islem, Ad = "", Durum = "s", Ilerleme = "", Asama = "", Sonuc = "", Ek = ""; }
+        static string IslemDosya => Path.Combine(AjanAyar.Klasor, "islemler.txt");
+        static readonly object ik = new object();
+        static readonly HashSet<string> suren = new HashSet<string>();
+        static string Simdi() => DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        static List<Kayit> KayitlariOku()
+        {
+            var l = new List<Kayit>();
+            try
+            {
+                if (File.Exists(IslemDosya))
+                    foreach (var x in File.ReadAllLines(IslemDosya, Encoding.UTF8))
+                    {
+                        var p = x.Split('|'); if (p.Length < 10) continue;
+                        l.Add(new Kayit { Id = p[0], Bas = p[1], Bit = p[2], Islem = p[3], Ad = p[4], Durum = p[5], Ilerleme = p[6], Asama = p[7], Sonuc = p[8], Ek = p[9] });
+                    }
+            }
+            catch { }
+            return l;
+        }
+
+        static void Yaz(Kayit r)
+        {
+            lock (ik)
+            {
+                var l = KayitlariOku();
+                int i = l.FindIndex(x => x.Id == r.Id);
+                if (i >= 0) l[i] = r; else l.Add(r);
+                if (l.Count > 40) l = l.Skip(l.Count - 40).ToList();
+                try
+                {
+                    Directory.CreateDirectory(AjanAyar.Klasor);
+                    File.WriteAllLines(IslemDosya, l.Select(x => string.Join("|", new[] { x.Id, x.Bas, x.Bit, x.Islem, x.Ad, x.Durum, x.Ilerleme, x.Asama, x.Sonuc, x.Ek }.Select(Satir.T))), Encoding.UTF8);
+                }
+                catch { }
+            }
+        }
+
+        static void Bitir(Kayit r, bool ok, string sonuc, string ek = "")
+        {
+            r.Bit = Simdi(); r.Durum = ok ? "t" : "h"; r.Sonuc = sonuc; r.Ek = ek; if (ok) r.Ilerleme = "100";
+            Yaz(r); lock (ik) suren.Remove(r.Id);
+            Gunluk.Yaz("İşlem " + r.Islem + ": " + sonuc);
+        }
+
+        /// <summary>İşlem listesi (panel Teşhis'te gösterir). Servis yeniden başladıysa yarıda kalanlar işaretlenir.</summary>
+        public static Mesaj Islemler()
+        {
+            var r = Mesaj.Basari("");
+            lock (ik)
+            {
+                foreach (var x in KayitlariOku().Where(x => x.Durum == "s" && !suren.Contains(x.Id)))
+                { x.Durum = "y"; x.Bit = Simdi(); x.Sonuc = "Yarıda kaldı (bilgisayar kapandı ya da Sem yeniden başladı)"; Yaz(x); }
+                try { r.Veri = File.Exists(IslemDosya) ? File.ReadAllBytes(IslemDosya) : new byte[0]; } catch { }
+            }
+            return r;
+        }
+
+        /// <summary>DURUM için: son biten işlem (panel Etkinlik'e yazar).</summary>
+        public static string SonBiten()
         {
             try
             {
-                switch (islem)
+                var x = KayitlariOku().Where(k => k.Durum != "s" && k.Bit != "").OrderBy(k => k.Bit).LastOrDefault();
+                return x == null ? "" : x.Id + "|" + x.Bit + "|" + x.Islem + "|" + x.Durum + "|" + Satir.T(x.Sonuc);
+            }
+            catch { return ""; }
+        }
+
+        public static Mesaj Coz(string islem, string ad)
+        {
+            lock (ik)
+                if ((islem == "disk" || islem == "temp" || islem == "diskonar") && KayitlariOku().Any(x => x.Islem == islem && x.Durum == "s" && suren.Contains(x.Id)))
+                    return Mesaj.Hata("Bu işlem zaten sürüyor");
+            var r = new Kayit { Id = DateTime.Now.Ticks.ToString("x"), Bas = Simdi(), Islem = islem, Ad = ad ?? "" };
+            lock (ik) suren.Add(r.Id);
+            Yaz(r);
+            // Uzun işler arka planda; kısa olanlar hemen sonuçlanır
+            if (islem == "disk" || islem == "temp")
+            {
+                new Thread(() =>
                 {
-                    case "guc":
+                    try { if (islem == "disk") DiskTara(r); else TempTemizle(r); }
+                    catch (Exception e) { Bitir(r, false, e.Message); }
+                }) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+                var m = Mesaj.Basari(islem == "disk" ? "Disk taraması başladı" : "Temizlik başladı"); m["id"] = r.Id; return m;
+            }
+            Mesaj sonuc;
+            try { sonuc = Kisa(islem, ad); } catch (Exception e) { sonuc = Mesaj.Hata(e.Message); }
+            Bitir(r, sonuc.Tamam, sonuc["aciklama"], sonuc["ek"]);
+            sonuc["id"] = r.Id;
+            return sonuc;
+        }
+
+        static Mesaj Kisa(string islem, string ad)
+        {
+            switch (islem)
+            {
+                case "guc":
+                {
+                    Calistir("powercfg.exe", "/setactive " + YuksekPerformans);
+                    if (!GucPlani().Contains(YuksekPerformans))
                     {
-                        var o = Calistir("powercfg.exe", "/setactive " + YuksekPerformans);
-                        if (!GucPlani().Contains(YuksekPerformans))
-                        {
-                            // Bazı Windows'larda plan gizlidir: kopyası oluşturulup etkinleştirilir
-                            var cikti = Calistir("powercfg.exe", "-duplicatescheme " + YuksekPerformans);
-                            var m = System.Text.RegularExpressions.Regex.Match(cikti, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
-                            if (m.Success) Calistir("powercfg.exe", "/setactive " + m.Value);
-                        }
-                        // Prizdeyken uykuya geçmesin (uykudan dönüşte yavaş kalma sorunlarını da önler)
-                        Calistir("powercfg.exe", "/change standby-timeout-ac 0");
-                        var g = GucPlani();
-                        return g.Contains("8c5e7fda") || g.IndexOf("performans", StringComparison.OrdinalIgnoreCase) >= 0 || g.IndexOf("performance", StringComparison.OrdinalIgnoreCase) >= 0
-                            ? Mesaj.Basari("Güç ayarı Yüksek performans yapıldı") : Mesaj.Hata("Güç ayarı değiştirilemedi: " + g);
+                        // Bazı Windows'larda plan gizlidir: kopyası oluşturulup etkinleştirilir
+                        var cikti = Calistir("powercfg.exe", "-duplicatescheme " + YuksekPerformans);
+                        var m = System.Text.RegularExpressions.Regex.Match(cikti, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+                        if (m.Success) Calistir("powercfg.exe", "/setactive " + m.Value);
                     }
-                    case "hizlibaslat":
-                        using (var r = Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\Power")) r.SetValue("HiberbootEnabled", 0, RegistryValueKind.DWord);
-                        return Mesaj.Basari("Hızlı başlatma kapatıldı: bilgisayar her kapanışta tam sıfırlanacak");
-                    case "temp":
-                    {
-                        long silinen = 0;
-                        var klasorler = new List<string> { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp") };
-                        try { foreach (var u in Directory.GetDirectories(@"C:\Users")) klasorler.Add(Path.Combine(u, @"AppData\Local\Temp")); } catch { }
-                        foreach (var kl in klasorler.Where(Directory.Exists))
-                        {
-                            IEnumerable<string> dosyalar; try { dosyalar = Directory.EnumerateFiles(kl, "*", SearchOption.AllDirectories).ToList(); } catch { continue; }
-                            foreach (var f in dosyalar)
-                                try { var fi = new FileInfo(f); if (fi.LastWriteTime < DateTime.Now.AddDays(-2)) { long b = fi.Length; fi.Delete(); silinen += b; } } catch { }
-                        }
-                        return Mesaj.Basari("Geçici dosyalar temizlendi: " + (silinen / 1048576) + " MB");
-                    }
-                    case "program":
-                    {
-                        if (string.IsNullOrWhiteSpace(ad) || Korunan.Contains(ad.ToLowerInvariant())) return Mesaj.Hata("Bu program kapatılamaz (Windows'un parçası)");
-                        int n = 0;
-                        foreach (var p in Process.GetProcessesByName(ad)) using (p) try { p.Kill(); n++; } catch { }
-                        // Açılışta çalışıyorsa açılıştan çıkar (yalnızca Run anahtarları; kaldırmaz)
-                        int c = 0;
-                        var anahtarlar = new List<RegistryKey>();
-                        try { anahtarlar.Add(Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true)); } catch { }
-                        try { anahtarlar.Add(Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run", true)); } catch { }
-                        try { foreach (var sid in Registry.Users.GetSubKeyNames().Where(x => x.StartsWith("S-1-5-21-") && !x.EndsWith("_Classes"))) anahtarlar.Add(Registry.Users.OpenSubKey(sid + @"\Software\Microsoft\Windows\CurrentVersion\Run", true)); } catch { }
-                        foreach (var a in anahtarlar.Where(x => x != null))
-                            using (a)
-                                foreach (var v in a.GetValueNames())
-                                    if ((Convert.ToString(a.GetValue(v)) ?? "").IndexOf(ad + ".exe", StringComparison.OrdinalIgnoreCase) >= 0) { try { a.DeleteValue(v); c++; } catch { } }
-                        return Mesaj.Basari(ad + " kapatıldı (" + n + ")" + (c > 0 ? ", açılıştan çıkarıldı" : ""));
-                    }
-                    case "disk":
-                        new Thread(() =>
-                        {
-                            try { var o = Calistir("chkdsk.exe", "C: /scan", 60 * 60 * 1000); Gunluk.Yaz("Disk taraması: " + o.Split('\n').LastOrDefault(x => x.Trim() != "")); }
-                            catch (Exception e) { Gunluk.Yaz("Disk taraması: " + e.Message); }
-                        }) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
-                        return Mesaj.Basari("Disk taraması başladı (arka planda, bilgisayar kullanılabilir)");
+                    // Prizdeyken uykuya geçmesin (uykudan dönüşte yavaş kalma sorunlarını da önler)
+                    Calistir("powercfg.exe", "/change standby-timeout-ac 0");
+                    var g = GucPlani();
+                    return g.Contains("8c5e7fda") || g.IndexOf("performans", StringComparison.OrdinalIgnoreCase) >= 0 || g.IndexOf("performance", StringComparison.OrdinalIgnoreCase) >= 0
+                        ? Mesaj.Basari("Güç ayarı Yüksek performans yapıldı, uyku kapatıldı. Hemen geçerli.") : Mesaj.Hata("Güç ayarı değiştirilemedi: " + g);
+                }
+                case "hizlibaslat":
+                {
+                    using (var r = Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\Power")) r.SetValue("HiberbootEnabled", 0, RegistryValueKind.DWord);
+                    bool ok = !HizliBaslatma();
+                    return ok ? Mesaj.Basari("Hızlı başlatma kapatıldı. Bir sonraki kapatıp açışta bilgisayar tam sıfırlanarak açılacak.") : Mesaj.Hata("Ayar yazılamadı");
+                }
+                case "program":
+                {
+                    if (string.IsNullOrWhiteSpace(ad) || Korunan.Contains(ad.ToLowerInvariant())) return Mesaj.Hata("Bu program kapatılamaz (Windows'un parçası)");
+                    int n = 0;
+                    foreach (var p in Process.GetProcessesByName(ad)) using (p) try { p.Kill(); n++; } catch { }
+                    // Açılışta çalışıyorsa açılıştan çıkar (yalnızca Run anahtarları; kaldırmaz)
+                    int c = 0;
+                    var anahtarlar = new List<RegistryKey>();
+                    try { anahtarlar.Add(Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true)); } catch { }
+                    try { anahtarlar.Add(Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run", true)); } catch { }
+                    try { foreach (var sid in Registry.Users.GetSubKeyNames().Where(x => x.StartsWith("S-1-5-21-") && !x.EndsWith("_Classes"))) anahtarlar.Add(Registry.Users.OpenSubKey(sid + @"\Software\Microsoft\Windows\CurrentVersion\Run", true)); } catch { }
+                    foreach (var a in anahtarlar.Where(x => x != null))
+                        using (a)
+                            foreach (var v in a.GetValueNames())
+                                if ((Convert.ToString(a.GetValue(v)) ?? "").IndexOf(ad + ".exe", StringComparison.OrdinalIgnoreCase) >= 0) { try { a.DeleteValue(v); c++; } catch { } }
+                    bool kaldi = Process.GetProcessesByName(ad).Length > 0;
+                    if (n == 0 && c == 0) return Mesaj.Basari(ad + " zaten çalışmıyordu");
+                    return kaldi ? Mesaj.Hata(ad + " kapatılamadı, hâlâ çalışıyor") : Mesaj.Basari(ad + " kapatıldı" + (c > 0 ? " ve açılışta kendiliğinden başlaması engellendi" : " (açılışta tekrar başlayabilir)"));
+                }
+                case "diskonar":
+                {
+                    // Sorunlu kesimleri bir sonraki açılışta onarır (Windows kilitli diski açılışta düzeltir)
+                    var o = Calistir("cmd.exe", "/c echo Y| chkdsk C: /spotfix", 120000);
+                    return Mesaj.Basari("Onarım bir sonraki açılışa ayarlandı. Bilgisayar yeniden başlayınca birkaç dakika onarım ekranı görünür.");
                 }
             }
-            catch (Exception e) { return Mesaj.Hata(e.Message); }
             return Mesaj.Hata("Bilinmeyen işlem");
+        }
+
+        static void TempTemizle(Kayit r)
+        {
+            long silinen = 0; int adet = 0;
+            var klasorler = new List<string> { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp") };
+            try { foreach (var u in Directory.GetDirectories(@"C:\Users")) klasorler.Add(Path.Combine(u, @"AppData\Local\Temp")); } catch { }
+            var dosyalar = new List<string>();
+            r.Asama = "Dosyalar listeleniyor"; Yaz(r);
+            foreach (var kl in klasorler.Where(Directory.Exists))
+                try { dosyalar.AddRange(Directory.EnumerateFiles(kl, "*", SearchOption.AllDirectories)); } catch { }
+            r.Asama = dosyalar.Count + " dosya inceleniyor"; Yaz(r);
+            var sonYaz = DateTime.Now;
+            for (int i = 0; i < dosyalar.Count; i++)
+            {
+                try { var fi = new FileInfo(dosyalar[i]); if (fi.LastWriteTime < DateTime.Now.AddDays(-2)) { long b = fi.Length; fi.Delete(); silinen += b; adet++; } } catch { }
+                if ((DateTime.Now - sonYaz).TotalSeconds > 2) { sonYaz = DateTime.Now; r.Ilerleme = (i * 100 / Math.Max(1, dosyalar.Count)).ToString(); r.Asama = adet + " dosya silindi (" + silinen / 1048576 + " MB)"; Yaz(r); }
+            }
+            r.Asama = "";
+            Bitir(r, true, adet + " dosya silindi, " + (silinen / 1048576) + " MB yer açıldı" + (adet == 0 ? " (temizlenecek eski dosya yoktu)" : ""));
+        }
+
+        static void DiskTara(Kayit r)
+        {
+            // chkdsk /scan: disk kullanılırken salt tarama yapar. İlerlemeyi satır satır okuyup kaydeder.
+            Encoding oem; try { oem = Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage); } catch { oem = Encoding.Default; }
+            var psi = new ProcessStartInfo("chkdsk.exe", "C: /scan") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true, StandardOutputEncoding = oem };
+            var asamaRx = new System.Text.RegularExpressions.Regex(@"^\s*(Stage|Aşama|A.ama)\s*(\d)\s*:\s*(.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var topRx = new System.Text.RegularExpressions.Regex(@"(Total|Toplam)\s*:\s*%?\s*(\d{1,3})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var tum = new StringBuilder(); var satir = new StringBuilder();
+            var sonYaz = DateTime.MinValue;
+            r.Asama = "Başlıyor"; Yaz(r);
+            using (var x = Process.Start(psi))
+            {
+                x.PriorityClass = ProcessPriorityClass.BelowNormal;
+                int ch;
+                while ((ch = x.StandardOutput.Read()) >= 0)
+                {
+                    if (ch != '\r' && ch != '\n') { satir.Append((char)ch); continue; }
+                    var s = satir.ToString().Trim(); satir.Clear();
+                    if (s == "") continue;
+                    tum.AppendLine(s);
+                    var a = asamaRx.Match(s);
+                    if (a.Success) r.Asama = "Aşama " + a.Groups[2].Value + "/3: " + a.Groups[3].Value.Trim().TrimEnd('.', ' ');
+                    var t = topRx.Match(s);
+                    if (t.Success) r.Ilerleme = t.Groups[2].Value;
+                    if (a.Success || (DateTime.Now - sonYaz).TotalSeconds > 3) { sonYaz = DateTime.Now; Yaz(r); }
+                }
+                x.WaitForExit(3 * 60 * 60 * 1000);
+                // chkdsk çıkış kodu: 0 temiz, 1 hata bulunup düzeltildi, 2 temizlik yapıldı, 3 hata var (onarım gerekli)
+                int kod = x.HasExited ? x.ExitCode : -1;
+                var son = tum.ToString().Split('\n').Select(y => y.Trim()).Where(y => y != "" && !topRx.IsMatch(y)).ToList();
+                var ozet = string.Join(" ", son.Skip(Math.Max(0, son.Count - 2)));
+                r.Asama = "";
+                if (kod == 0 || kod == 2) Bitir(r, true, "Disk temiz, sorun bulunmadı.");
+                else if (kod == 1) Bitir(r, true, "Hatalar bulundu ve düzeltildi.");
+                else if (kod == 3) Bitir(r, false, "Diskte hata bulundu, onarım gerekiyor. " + ozet, "diskonar");
+                else Bitir(r, false, "Tarama tamamlanamadı. " + ozet);
+            }
         }
     }
 }

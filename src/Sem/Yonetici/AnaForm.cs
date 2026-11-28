@@ -781,6 +781,7 @@ namespace Sem.Yonetici
         string sonInternet = null, tonerUyariGunu = "";
         readonly HashSet<string> bildirilenCihaz = new HashSet<string>();
         bool radarIlk = true;
+        readonly Dictionary<string, string> islemBildirim = new Dictionary<string, string>();
         readonly Dictionary<string, DateTime> perfBildirim = new Dictionary<string, DateTime>();
 
         void SorunlariAc() { PaneliAc(); SayfaGoster(5); }
@@ -900,6 +901,20 @@ namespace Sem.Yonetici
                             // Öğretmenden gelen sorun bildirimi
                             if (d["sorun"] != "") foreach (var not in Izleme.SorunlariAl(p, d["sorun"])) SorunGeldi(p.Baslik, not);
                             if (d["yonetici"] == "1" && d.Alan.ContainsKey("internet")) IzlemeUyarilari(d);
+                            // Teşhis'ten başlatılan işlem bitti: Etkinlik'e (panel kapalıyken bitenler, son 30 dk içindeyse)
+                            var isl = d["islem_son"].Split('|');
+                            if (isl.Length >= 5)
+                            {
+                                string onceki; bool yeni;
+                                lock (islemBildirim) { yeni = !islemBildirim.TryGetValue(p.Ad, out onceki) || onceki != isl[0]; islemBildirim[p.Ad] = isl[0]; }
+                                DateTime bit;
+                                if (yeni && DateTime.TryParseExact(isl[1], "yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out bit) && (DateTime.Now - bit).TotalMinutes < 30)
+                                {
+                                    var ad = IslemKaydi.Adi(isl[2], "");
+                                    Kaydet(p.Baslik + ": " + ad.TrimEnd(' ', ':') + (isl[3] == "t" ? " tamamlandı. " : " sorunlu bitti. ") + isl[4], isl[3] == "t" ? 1 : 2);
+                                    if (isl[3] != "t") try { BeginInvoke((Action)(() => { try { new Sem.Ajan.BildirimForm(p.Baslik + ": " + ad, isl[4], Ik.Kalp, Renk.Pembe, null).Show(); } catch { } })); } catch { }
+                                }
+                            }
                             // Yavaşlama uyarısı (aynı bilgisayar için en çok 2 saatte bir)
                             var pu = d["perf_uyari"];
                             if (pu != "" && pu.Contains("|"))
