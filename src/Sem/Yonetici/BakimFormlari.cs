@@ -718,6 +718,7 @@ namespace Sem.Yonetici
             var kutu = InceKaydirma.Sar(govde); kutu.SetBounds(0, 0, g, Icerik.Height - Tema.S(48));
             var durum = Yazi.Etiket("Lisans bilgileri alınıyor…", 9.5f, false, Renk.Yazi2, false);
             durum.SetBounds(0, Icerik.Height - Tema.S(36), g, Tema.S(36)); durum.TextAlign = ContentAlignment.MiddleLeft;
+            kutu.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; durum.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             Icerik.Controls.Add(kutu); Icerik.Controls.Add(durum);
             int w = g - Tema.S(26);
             var b1 = Yazi.UstBaslik("Bilgisayar", Renk.Yazi3); b1.Location = new Point(0, 0);

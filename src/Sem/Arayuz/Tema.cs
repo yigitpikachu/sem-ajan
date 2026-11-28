@@ -237,7 +237,7 @@ namespace Sem.Arayuz
         /// <summary>Pencereyi kısa bir saydamlık geçişiyle açar.</summary>
         public static void Belir(Form f, int sureMs = 140)
         {
-            if (Environment.OSVersion.Platform != PlatformID.Win32NT) return;
+            if (Environment.OSVersion.Platform != PlatformID.Win32NT || !f.TopLevel) return;
             try
             {
                 f.Opacity = 0;

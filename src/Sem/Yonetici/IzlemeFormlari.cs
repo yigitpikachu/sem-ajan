@@ -173,15 +173,15 @@ namespace Sem.Yonetici
         public Label Baslik(string metin) { if (y > 0) y += Tema.S(10); var l = Yazi.UstBaslik(metin, Renk.Yazi3); l.Location = new Point(0, y); Govde.Controls.Add(l); y += Tema.S(24); return l; }
         public Label Metin(string metin, Color? renk = null, float boyut = 9.75f, bool kalin = false, int yuk = 22)
         {
-            var l = Yazi.Etiket(metin, boyut, kalin, renk ?? Renk.Yazi, false); l.SetBounds(0, y, Genislik, Tema.S(yuk)); l.AutoEllipsis = true;
+            var l = Yazi.Etiket(metin, boyut, kalin, renk ?? Renk.Yazi, false); l.SetBounds(0, y, Genislik, Tema.S(yuk)); l.AutoEllipsis = true; l.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Govde.Controls.Add(l); y += Tema.S(yuk) + Tema.S(2); return l;
         }
         /// <summary>Solda metin, sağda soluk ek bilgi.</summary>
         public Label Ikili(string sol, string sag, Color? solRenk = null, Action tik = null)
         {
             int sw = Tema.S(170);
-            var a = Yazi.Etiket(sol, 9.75f, false, solRenk ?? Renk.Yazi, false); a.SetBounds(0, y, Genislik - sw - Tema.S(8), Tema.S(22)); a.AutoEllipsis = true;
-            var b = Yazi.Etiket(sag, 9f, false, Renk.Yazi3, false); b.SetBounds(Genislik - sw, y + Tema.S(1), sw, Tema.S(22)); b.TextAlign = ContentAlignment.TopRight; b.AutoEllipsis = true;
+            var a = Yazi.Etiket(sol, 9.75f, false, solRenk ?? Renk.Yazi, false); a.SetBounds(0, y, Genislik - sw - Tema.S(8), Tema.S(22)); a.AutoEllipsis = true; a.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            var b = Yazi.Etiket(sag, 9f, false, Renk.Yazi3, false); b.SetBounds(Genislik - sw, y + Tema.S(1), sw, Tema.S(22)); b.TextAlign = ContentAlignment.TopRight; b.AutoEllipsis = true; b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             if (tik != null) foreach (var c in new[] { a, b }) { c.Cursor = Cursors.Hand; c.Click += (s, e) => tik(); c.MouseEnter += (s, e) => a.ForeColor = Renk.Mavi; c.MouseLeave += (s, e) => a.ForeColor = solRenk ?? Renk.Yazi; }
             Govde.Controls.Add(a); Govde.Controls.Add(b); y += Tema.S(26); return a;
         }
@@ -210,8 +210,10 @@ namespace Sem.Yonetici
             degisti.KisaBasildi += (s, e) => toner2.Text = "Yanlışlıkla olmasın diye düğmeyi dolana kadar basılı tutun.";
             degisti.Onaylandi += (s, e) => TonerDegisti();
             kart.Controls.AddRange(new Control[] { tonerBas, toner1, toner2, degisti });
+            kart.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; tonerBas.Anchor = toner1.Anchor = toner2.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; degisti.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             liste.Kutu.SetBounds(0, Tema.S(126), g, Icerik.Height - Tema.S(126) - Tema.S(40));
             durum = Yazi.Etiket("Baskı kayıtları alınıyor…", 9.5f, false, Renk.Yazi2, false); durum.SetBounds(0, Icerik.Height - Tema.S(34), g, Tema.S(30));
+            liste.Kutu.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; durum.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             Icerik.Controls.AddRange(new Control[] { kart, liste.Kutu, durum });
             Shown += (s, e) => { Task.Run(Toner); Task.Run(Baskilar); };
         }
@@ -334,6 +336,7 @@ namespace Sem.Yonetici
             hepsiTanidik = new Buton("Hepsi tanıdık", Ik.TikDaire, ButonTuru.Ikincil) { Visible = false }; hepsiTanidik.Location = new Point(g - hepsiTanidik.Width, 0);
             liste.Kutu.SetBounds(0, Tema.S(50), g, Icerik.Height - Tema.S(50) - Tema.S(40));
             durum = Yazi.Etiket("", 9.5f, false, Renk.Yazi2, false); durum.SetBounds(0, Icerik.Height - Tema.S(34), g, Tema.S(30));
+            liste.Kutu.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; durum.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; rapor.Anchor = hepsiTanidik.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             Icerik.Controls.AddRange(new Control[] { sekme, rapor, hepsiTanidik, liste.Kutu, durum });
             sekme.Degisti += (s, e) => Ciz();
             rapor.Click += (s, e) => RaporAc();
@@ -418,7 +421,7 @@ namespace Sem.Yonetici
 
         void Adlandir(string mac, string eski, string ip)
         {
-            var ad = Diyalog.Metin(this, "Cihaza ad ver", ip + " · " + mac + "\nÖrn: Modem, Canon yazıcı, Osman'ın telefonu", eski, "Kaydet");
+            var ad = Diyalog.Metin(Sahip, "Cihaza ad ver", ip + " · " + mac + "\nÖrn: Modem, Canon yazıcı, Osman'ın telefonu", eski, "Kaydet");
             if (ad == null) return;
             Degistir("ad", mac, ad.Trim());
         }
@@ -434,7 +437,7 @@ namespace Sem.Yonetici
 
         void RaporAc()
         {
-            var secim = MK.Secim(this, "Aylık rapor", "Hangi ayın raporu açılsın? Tarayıcıda açılır, oradan yazdırabilir ya da PDF kaydedebilirsiniz.",
+            var secim = MK.Secim(Sahip, "Aylık rapor", "Hangi ayın raporu açılsın? Tarayıcıda açılır, oradan yazdırabilir ya da PDF kaydedebilirsiniz.",
                 ("Bu ay", Izleme.AyAdi(DateTime.Today.ToString("yyyy-MM")), Ik.Takvim), ("Geçen ay", Izleme.AyAdi(DateTime.Today.AddMonths(-1).ToString("yyyy-MM")), Ik.Takvim));
             if (secim < 0) return;
             var ay = DateTime.Today.AddMonths(-secim).ToString("yyyy-MM");
@@ -457,12 +460,14 @@ namespace Sem.Yonetici
     {
         readonly SatirListesi liste = new SatirListesi();
 
+        public Action Degisti;
         public SorunlarForm() : base("Sorun bildirimleri", 640, 560)
         {
             SabitBoyut = true;
             liste.Kutu.SetBounds(0, 0, Icerik.Width, Icerik.Height - Tema.S(40));
             var d = Yazi.Etiket("Öğretmenler saatin yanındaki Sem simgesinden \"Sorun bildir\" der; buraya düşer.", 9.5f, false, Renk.Yazi2, false);
             d.SetBounds(0, Icerik.Height - Tema.S(34), Icerik.Width, Tema.S(30));
+            liste.Kutu.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; d.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             Icerik.Controls.AddRange(new Control[] { liste.Kutu, d });
             Shown += (s, e) => Ciz();
         }
@@ -477,7 +482,7 @@ namespace Sem.Yonetici
             {
                 DateTime z; Izleme.Zaman(x.Zaman, out z);
                 var not = x.Not.Trim() == "" ? "(not yok, ekran görüntüsü)" : x.Not.Replace("\r", " ").Replace("\n", " ");
-                liste.Ikili(x.Pc + ": " + not, z.ToString("d MMM HH:mm", tr), null, () => { using (var f = new SorunDetayForm(x)) if (f.ShowDialog(this) == DialogResult.OK) Ciz(); });
+                liste.Ikili(x.Pc + ": " + not, z.ToString("d MMM HH:mm", tr), null, () => { using (var f = new SorunDetayForm(x)) if (f.ShowDialog(Sahip) == DialogResult.OK) { Ciz(); Degisti?.Invoke(); } });
             }
             liste.Bitir();
         }

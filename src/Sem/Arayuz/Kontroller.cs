@@ -378,11 +378,27 @@ namespace Sem.Arayuz
                 KapatDugmesi.BringToFront();
             }
             KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape && kapatilabilir) { DialogResult = DialogResult.Cancel; Close(); } };
-            MouseDown += (s, e) => { if (e.Button == MouseButtons.Left && e.Y < Tema.S(60)) Tasi(); };
+            MouseDown += (s, e) => { if (e.Button == MouseButtons.Left && e.Y < Tema.S(60) && !Gomulu) Tasi(); };
         }
 
         /// <summary>true ise pencere içeriğe göre kısaltılmaz.</summary>
         protected bool SabitBoyut;
+
+        /// <summary>Pencereyi başka bir denetimin içine sayfa olarak yerleştirir (başlık, kenar ve kapat düğmesi olmadan).</summary>
+        public bool Gomulu { get; private set; }
+        public void Gom(Control kap)
+        {
+            Gomulu = true; SabitBoyut = true;
+            TopLevel = false; FormBorderStyle = FormBorderStyle.None; Dock = DockStyle.Fill;
+            if (KapatDugmesi != null) KapatDugmesi.Visible = false;
+            kap.Controls.Add(this);
+            Icerik.SetBounds(0, 0, ClientSize.Width, ClientSize.Height);
+            Show();
+            OnShown(EventArgs.Empty);
+        }
+
+        /// <summary>Bu pencereden açılacak diyaloglar için sahip (sayfa olarak gömülüyse ana pencere).</summary>
+        public IWin32Window Sahip => TopLevel ? this : (IWin32Window)(TopLevelControl ?? this);
 
         /// <summary>İçerik ile alttaki düğmeler arasındaki fazla boşluğu kaldırır; pencere içeriği kadar olur.</summary>
         protected override void OnLoad(EventArgs e)
@@ -430,6 +446,7 @@ namespace Sem.Arayuz
         {
             base.OnPaint(e);
             var g = e.Graphics; Tema.Kaliteli(g);
+            if (Gomulu) return;
             Tema.PencereKenari(g, Width, Height, dwmYuvarlak, Tema.S(12));
             if (baslikVar)
                 Tema.YaziCiz(g, baslik, Tema.YaziKalin(13f), Renk.Yazi, new RectangleF(Tema.S(24), Tema.S(14), Width - Tema.S(90), Tema.S(36)));
