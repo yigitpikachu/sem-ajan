@@ -468,7 +468,7 @@ namespace Sem.Ajan
             const string ps = "try { Enable-ComputerRestore -Drive 'C:\\' -ErrorAction SilentlyContinue; " +
                               "New-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore' -Name SystemRestorePointCreationFrequency -Value 0 -PropertyType DWord -Force | Out-Null; " +
                               "Checkpoint-Computer -Description 'Sem: {0}' -RestorePointType MODIFY_SETTINGS -ErrorAction Stop; 'TAMAM' } catch { 'HATA ' + $_.Exception.Message }";
-            var o = Calistir("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -Command \"" + string.Format(ps, neden.Replace("'", "")) + "\"", 10 * 60 * 1000);
+            var o = Calistir("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -Command \"" + ps.Replace("{0}", neden.Replace("'", "")) + "\"", 10 * 60 * 1000);
             return o.Contains("TAMAM") ? " Öncesinde geri yükleme noktası alındı." : " (Geri yükleme noktası alınamadı.)";
         }
 

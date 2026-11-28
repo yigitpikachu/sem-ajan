@@ -85,6 +85,7 @@ namespace Sem.Yonetici
             int g = Icerik.Width;
             arac = new Panel { BackColor = Renk.Zemin, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             arac.SetBounds(0, 0, g, Tema.S(84));
+            Icerik.Resize += (s, e) => AraclariDiz();
             liste.Kutu.SetBounds(0, Tema.S(92), g, Icerik.Height - Tema.S(92) - Tema.S(36));
             durum = Yazi.Etiket("", 9.5f, false, Renk.Yazi2, false); durum.SetBounds(0, Icerik.Height - Tema.S(30), g, Tema.S(28));
             liste.Kutu.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; durum.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -97,24 +98,46 @@ namespace Sem.Yonetici
 
         void Ui(Action a) { try { if (!IsDisposed && IsHandleCreated) BeginInvoke(a); } catch { } }
 
+        readonly List<Control> aracSirasi = new List<Control>();
+
         void AraclariKur()
         {
-            int x = 0;
-            Buton B(string metin, string ikon, ButonTuru tur, Action tik, int y)
+            Buton B(string metin, string ikon, ButonTuru tur, Action tik)
             {
-                var b = new Buton(metin, ikon, tur) { Location = new Point(x, y) };
+                var b = new Buton(metin, ikon, tur);
                 b.Click += (s, e) => tik();
-                arac.Controls.Add(b); x += b.Width + Tema.S(8); return b;
+                arac.Controls.Add(b); aracSirasi.Add(b); return b;
             }
-            B("Hepsini yeniden tara", Ik.Esitle, ButonTuru.Birincil, () => Yenile(true), 0);
-            B("Tümünü seç", Ik.Tik, ButonTuru.Ikincil, () => { var acik = pcler.Where(p => p.Acik).Select(p => p.Ad).ToList(); if (acik.All(secili.Contains)) secili.Clear(); else foreach (var a in acik) secili.Add(a); Ciz(); }, 0);
-            x = 0;
-            var l = Yazi.Etiket("Seçilenlere:", 9.5f, true, Renk.Yazi2, false); l.SetBounds(0, Tema.S(52), Tema.S(92), Tema.S(24)); arac.Controls.Add(l); x = Tema.S(96);
+            B("Hepsini yeniden tara", Ik.Esitle, ButonTuru.Birincil, () => Yenile(true));
+            B("Tümünü seç", Ik.Tik, ButonTuru.Ikincil, () => { var acik = pcler.Where(p => p.Acik).Select(p => p.Ad).ToList(); if (acik.All(secili.Contains)) secili.Clear(); else foreach (var a in acik) secili.Add(a); foreach (var sk in satirlar.Values) sk.Daire.Invalidate(); });
+            var l = Yazi.Etiket("Seçilenlere:", 9.5f, true, Renk.Yazi2, false); l.Size = new Size(Tema.S(92), Tema.S(24)); l.TextAlign = ContentAlignment.MiddleLeft;
+            arac.Controls.Add(l); aracSirasi.Add(null); aracSirasi.Add(l);
             foreach (var (islem, metin, ikon) in new[] { ("checkup", "Check-up", Ik.Kalp), ("defender", "Virüs taraması", Ik.Kalkan), ("temp", "Geçici dosyalar", Ik.Sil), ("saat", "Saati eşitle", Ik.Takvim), ("sicaklik", "Sıcaklık ölçümü", Ik.Kalp) })
             {
                 var isl = islem;
-                B(metin, ikon, ButonTuru.Ikincil, () => Toplu(isl), Tema.S(46));
+                B(metin, ikon, ButonTuru.Ikincil, () => Toplu(isl));
             }
+            arac.Resize += (s, e) => AraclariDiz();
+            AraclariDiz();
+        }
+
+        /// <summary>Düğmeler pencere genişliğine göre alt satıra kayar; liste aracın altından başlar.</summary>
+        void AraclariDiz()
+        {
+            int x = 0, y = 0, satirH = 0, w = arac.Width;
+            foreach (var c in aracSirasi)
+            {
+                if (c == null) { x = 0; y += satirH + Tema.S(10); satirH = 0; continue; }
+                if (x > 0 && x + c.Width > w) { x = 0; y += satirH + Tema.S(8); satirH = 0; }
+                satirH = Math.Max(satirH, c.Height);
+                c.Location = new Point(x, y); x += c.Width + Tema.S(8);
+            }
+            // Etiket düğme satırının ortasında
+            foreach (var c in aracSirasi.OfType<Label>()) c.Height = aracSirasi[0].Height;
+            int h = y + satirH;
+            if (arac.Height != h) arac.Height = h;
+            int ust = h + Tema.S(10);
+            if (liste.Kutu.Top != ust) liste.Kutu.SetBounds(0, ust, liste.Kutu.Width, Icerik.ClientSize.Height - ust - Tema.S(36));
         }
 
         void Toplu(string islem)
@@ -180,7 +203,7 @@ namespace Sem.Yonetici
                 {
                     var d = SaglikTarama.Tara(p);
                     foreach (var b in SaglikTarama.YeniCiddi(p, d)) kaydet?.Invoke(p.Baslik + ": " + b, 2);
-                    Ui(() => { taraniyor.Remove(p.Ad); Ciz(); });
+                    Ui(() => { taraniyor.Remove(p.Ad); Guncelle(p); });
                 });
                 Ui(() => { durum.Text = SonTaramaMetni(); degisti?.Invoke(); });
             });
@@ -192,29 +215,65 @@ namespace Sem.Yonetici
             return z == DateTime.MinValue ? "" : "Son tarama " + z.ToString("HH:mm") + ". Açık bilgisayarlar 6 saatte bir kendiliğinden taranır; ciddi sorun Etkinlik'e düşer.";
         }
 
+        class SatirKontrol { public Panel Pn, Daire; public Label Ad, Rozet, Alt; public Buton Teshis; public Color Renk; }
+        readonly Dictionary<string, SatirKontrol> satirlar = new Dictionary<string, SatirKontrol>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Satırlar bir kez kurulur; sonra yalnızca yazı ve renkleri güncellenir (yanıp sönmez).</summary>
         void Ciz()
         {
-            int kaydir = -liste.Govde.AutoScrollPosition.Y;
-            liste.Temizle();
-            int sorun = 0, dikkat = 0, iyi = 0;
-            foreach (var p in pcler)
+            if (satirlar.Count == 0)
             {
-                SaglikTarama.Son.TryGetValue(p.Ad, out var d);
-                int sv = d?.Seviye ?? -1; if (d != null && d.Hata == "" && d.Zaman > DateTime.MinValue) { if (sv == 2) sorun++; else if (sv == 1) dikkat++; else iyi++; }
-                liste.EklePx(Satir(p, d));
+                liste.Temizle();
+                foreach (var p in pcler) liste.EklePx(Satir(p));
+                liste.Bitir();
             }
-            liste.Bitir();
-            if (kaydir > 0) liste.Govde.AutoScrollPosition = new Point(0, kaydir);
-            Text = "Bilgisayar sağlığı";
+            foreach (var p in pcler) Guncelle(p);
         }
 
-        Control Satir(Pc p, SaglikDurumu d)
+        Control Satir(Pc p)
         {
             int w = liste.Genislik;
-            var tr = new CultureInfo("tr-TR");
             var kap = new Panel { Width = w, Height = Tema.S(72), BackColor = Renk.Zemin, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             var pn = new Panel { Width = w, Height = Tema.S(64), BackColor = Renk.Yuzey, Anchor = kap.Anchor, Cursor = Cursors.Hand };
             kap.Controls.Add(pn);
+            var sk = new SatirKontrol { Pn = pn, Renk = Renk.Yazi3 };
+            var daire = new Panel { BackColor = Renk.Yuzey };
+            daire.SetBounds(Tema.S(12), (pn.Height - Tema.S(20)) / 2, Tema.S(20), Tema.S(20));
+            daire.Paint += (s, e) =>
+            {
+                bool sec = secili.Contains(p.Ad);
+                Tema.Kaliteli(e.Graphics);
+                using (var pen = new Pen(p.Acik ? (sec ? Renk.Mavi : Renk.CizgiKoyu) : Renk.Cizgi, Tema.S(2) / 1.5f)) e.Graphics.DrawEllipse(pen, 1, 1, daire.Width - 3, daire.Height - 3);
+                if (sec) using (var br = new SolidBrush(Renk.Mavi)) e.Graphics.FillEllipse(br, Tema.S(5), Tema.S(5), daire.Width - Tema.S(10) - 1, daire.Height - Tema.S(10) - 1);
+            };
+            daire.Click += (s, e) => { if (!p.Acik) return; if (!secili.Remove(p.Ad)) secili.Add(p.Ad); daire.Invalidate(); };
+            sk.Daire = daire;
+            sk.Ad = Yazi.Etiket(p.Baslik, 10.5f, true, Renk.Yazi, false); sk.Ad.SetBounds(Tema.S(44), Tema.S(10), w - Tema.S(320), Tema.S(24)); sk.Ad.AutoEllipsis = true; sk.Ad.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            sk.Teshis = new Buton("Teşhis", Ik.Kalp, ButonTuru.Sade);
+            sk.Teshis.Location = new Point(w - sk.Teshis.Width - Tema.S(12), (pn.Height - sk.Teshis.Height) / 2); sk.Teshis.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            // Durum yazısı Teşhis düğmesiyle aynı hizada, dikeyde ortalı
+            sk.Rozet = Yazi.Etiket("", 9.5f, true, Renk.Yazi3, false);
+            sk.Rozet.SetBounds(sk.Teshis.Left - Tema.S(126), (pn.Height - Tema.S(24)) / 2, Tema.S(118), Tema.S(24)); sk.Rozet.TextAlign = ContentAlignment.MiddleRight; sk.Rozet.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            sk.Alt = Yazi.Etiket("", 9.25f, false, Renk.Yazi2, false); sk.Alt.SetBounds(Tema.S(44), Tema.S(36), sk.Rozet.Left - Tema.S(52), Tema.S(20)); sk.Alt.AutoEllipsis = true; sk.Alt.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Action ac = () =>
+            {
+                if (!p.Acik) return;
+                using (var f = new TeshisForm(p, pcler, kaydet)) f.ShowDialog(Sahip);
+                Task.Run(() => { SaglikTarama.Tara(p); Ui(() => { Guncelle(p); degisti?.Invoke(); }); });
+            };
+            sk.Teshis.Click += (s, e) => ac();
+            foreach (var c in new Control[] { pn, sk.Ad, sk.Alt, sk.Rozet }) c.Click += (s, e) => ac();
+            pn.Controls.AddRange(new Control[] { daire, sk.Ad, sk.Rozet, sk.Alt, sk.Teshis });
+            pn.Paint += (s, e) => { using (var pen = new Pen(Renk.Cizgi)) e.Graphics.DrawRectangle(pen, 0, 0, pn.Width - 1, pn.Height - 1); using (var br = new SolidBrush(sk.Renk)) e.Graphics.FillRectangle(br, 0, 0, Tema.S(3), pn.Height); };
+            satirlar[p.Ad] = sk;
+            return kap;
+        }
+
+        void Guncelle(Pc p)
+        {
+            if (!satirlar.TryGetValue(p.Ad, out var sk)) return;
+            SaglikTarama.Son.TryGetValue(p.Ad, out var d);
+            var tr = new CultureInfo("tr-TR");
             bool tar = taraniyor.Contains(p.Ad);
             int sv = d == null || d.Zaman == DateTime.MinValue ? -2 : d.Seviye;
             Color renk; string rozet;
@@ -225,22 +284,15 @@ namespace Sem.Yonetici
             else if (sv == 1) { renk = Renk.Turuncu; rozet = "Dikkat"; }
             else if (sv >= -1 && d != null) { renk = Renk.YesilKoyu; rozet = "İyi"; }
             else { renk = Renk.Yazi3; rozet = "Taranmadı"; }
-            bool sec = secili.Contains(p.Ad);
-            var daire = new Panel { BackColor = Renk.Yuzey, Cursor = p.Acik ? Cursors.Hand : Cursors.Default };
-            daire.SetBounds(Tema.S(12), Tema.S(22), Tema.S(20), Tema.S(20));
-            daire.Paint += (s, e) =>
-            {
-                Tema.Kaliteli(e.Graphics);
-                using (var pen = new Pen(p.Acik ? (sec ? Renk.Mavi : Renk.CizgiKoyu) : Renk.Cizgi, Tema.S(2) / 1.5f)) e.Graphics.DrawEllipse(pen, 1, 1, daire.Width - 3, daire.Height - 3);
-                if (sec) using (var br = new SolidBrush(Renk.Mavi)) e.Graphics.FillEllipse(br, Tema.S(5), Tema.S(5), daire.Width - Tema.S(10) - 1, daire.Height - Tema.S(10) - 1);
-            };
-            daire.Click += (s, e) => { if (!p.Acik) return; if (!secili.Remove(p.Ad)) secili.Add(p.Ad); daire.Invalidate(); sec = secili.Contains(p.Ad); };
-            var ad = Yazi.Etiket(p.Baslik, 10.5f, true, p.Acik ? Renk.Yazi : Renk.Yazi3, false); ad.SetBounds(Tema.S(44), Tema.S(10), w - Tema.S(300), Tema.S(24)); ad.AutoEllipsis = true;
-            var rz = Yazi.Etiket(rozet, 9f, true, renk, false); rz.SetBounds(w - Tema.S(230), Tema.S(12), Tema.S(110), Tema.S(20)); rz.TextAlign = ContentAlignment.TopRight; rz.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             string alt;
             var sur = d?.Islemler.FirstOrDefault(i => i.Suruyor);
             if (sur != null) alt = "Sürüyor: " + IslemKaydi.Adi(sur.Islem, sur.Ad) + (sur.Ilerleme >= 0 ? " %" + sur.Ilerleme : "") + (sur.Asama != "" ? " · " + sur.Asama : "") + " · " + IslemKaydi.Sure(DateTime.Now - sur.Bas);
-            else if (d == null || d.Zaman == DateTime.MinValue) alt = p.Acik ? "Henüz taranmadı" : "Bilgisayar kapalı";
+            else if (d == null || d.Zaman == DateTime.MinValue)
+            {
+                alt = p.Acik ? (tar ? "Bilgiler alınıyor…" : "Henüz taranmadı") : "Bilgisayar kapalı";
+                var son0 = d?.Islemler.FirstOrDefault();
+                if (son0 != null) alt += " · son işlem: " + IslemKaydi.Adi(son0.Islem, son0.Ad) + (son0.Durum == "t" ? " ✓" : " (sorunlu: " + son0.Sonuc + ")");
+            }
             else if (d.Hata != "") alt = d.Hata;
             else
             {
@@ -250,20 +302,16 @@ namespace Sem.Yonetici
                 var son = d.Islemler.FirstOrDefault(i => !i.Suruyor && (DateTime.Now - i.Bit).TotalHours < 24);
                 if (son != null) alt += " · son işlem: " + IslemKaydi.Adi(son.Islem, son.Ad) + (son.Durum == "t" ? " ✓" : " (sorunlu)");
             }
-            var al = Yazi.Etiket(alt, 9.25f, false, sur != null ? Renk.Mavi : Renk.Yazi2, false); al.SetBounds(Tema.S(44), Tema.S(36), w - Tema.S(170), Tema.S(20)); al.AutoEllipsis = true; al.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            var tb = new Buton("Teşhis", Ik.Kalp, ButonTuru.Sade) { Enabled = p.Acik };
-            tb.Location = new Point(w - tb.Width - Tema.S(12), (pn.Height - tb.Height) / 2); tb.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            Action ac = () =>
-            {
-                if (!p.Acik) return;
-                using (var f = new TeshisForm(p, pcler, kaydet)) f.ShowDialog(Sahip);
-                Task.Run(() => { SaglikTarama.Tara(p); Ui(() => { Ciz(); degisti?.Invoke(); }); });
-            };
-            tb.Click += (s, e) => ac();
-            foreach (var c in new Control[] { pn, ad, al, rz }) c.Click += (s, e) => ac();
-            pn.Controls.AddRange(new Control[] { daire, ad, rz, al, tb });
-            pn.Paint += (s, e) => { using (var pen = new Pen(Renk.Cizgi)) e.Graphics.DrawRectangle(pen, 0, 0, pn.Width - 1, pn.Height - 1); using (var br = new SolidBrush(renk)) e.Graphics.FillRectangle(br, 0, 0, Tema.S(3), pn.Height); };
-            return kap;
+            // Yalnızca değişen yazı/renk güncellenir
+            if (sk.Rozet.Text != rozet) sk.Rozet.Text = rozet;
+            if (sk.Rozet.ForeColor != renk) sk.Rozet.ForeColor = renk;
+            if (sk.Alt.Text != alt) sk.Alt.Text = alt;
+            var altRenk = sur != null ? Renk.Mavi : Renk.Yazi2;
+            if (sk.Alt.ForeColor != altRenk) sk.Alt.ForeColor = altRenk;
+            var adRenk = p.Acik ? Renk.Yazi : Renk.Yazi3;
+            if (sk.Ad.ForeColor != adRenk) sk.Ad.ForeColor = adRenk;
+            sk.Teshis.Enabled = p.Acik; sk.Pn.Cursor = sk.Daire.Cursor = p.Acik ? Cursors.Hand : Cursors.Default;
+            if (sk.Renk != renk) { sk.Renk = renk; sk.Pn.Invalidate(new Rectangle(0, 0, Tema.S(4), sk.Pn.Height)); }
         }
     }
 }
